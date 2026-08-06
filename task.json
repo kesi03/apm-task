@@ -1,0 +1,41 @@
+{
+  "id": "8f7a3c5e-2b1d-4a90-9e6c-7f4d2b8a1c3e",
+  "name": "CiApmTrace",
+  "friendlyName": "CI APM Trace",
+  "description": "Sends CI pipeline traces to Elastic APM",
+  "author": "Your Team",
+  "helpMarkDown": "Sends CI pipeline traces to Elastic APM. Requires the ELASTIC_APM_SERVER_URL and ELASTIC_APM_SECRET_TOKEN environment variables to be set on the pipeline.",
+  "category": "Utility",
+  "visibility": ["Build", "Release"],
+  "demands": [],
+  "version": {
+    "Major": 1,
+    "Minor": 0,
+    "Patch": 0
+  },
+  "minimumAgentVersion": "2.144.0",
+  "instanceNameFormat": "CI APM Trace",
+  "inputs": [
+    {
+      "name": "traceName",
+      "type": "string",
+      "label": "Trace name",
+      "defaultValue": "azure-devops",
+      "required": false,
+      "helpMarkDown": "Name of the pipeline trace"
+    },
+    {
+      "name": "fail",
+      "type": "boolean",
+      "label": "Force pipeline failure",
+      "defaultValue": false,
+      "required": false,
+      "helpMarkDown": "Force the trace to end as a failure"
+    }
+  ],
+  "execution": {
+    "Node": {
+      "target": "dist/azure-wrapper.js"
+    }
+  }
+}

@@ -1,0 +1,52 @@
+version: '3'
+
+vars:
+  IMAGE: ci-apm-trace
+  TRACE_NAME: my-pipeline
+  BUILD_ID: '1'
+
+tasks:
+  default:
+    desc: Install dependencies and build
+    cmds:
+      - task: install
+      - task: build
+
+  install:
+    desc: Install dependencies
+    cmds:
+      - npm install
+
+  build:
+    desc: Compile TypeScript to dist/
+    deps: [install]
+    cmds:
+      - npm run build
+
+  typecheck:
+    desc: Run the TypeScript compiler without emitting
+    deps: [install]
+    cmds:
+      - npm run typecheck
+
+  clean:
+    desc: Remove the compiled dist/ directory
+    cmds:
+      - node -e "require('fs').rmSync('dist',{recursive:true,force:true})"
+
+  start:
+    desc: Run the CLI
+    deps: [build]
+    cmds:
+      - node dist/cli.js --trace-name {{.TRACE_NAME}} --build-id {{.BUILD_ID}}
+
+  test:
+    desc: Smoke test CLI success and failure exit codes
+    deps: [build]
+    cmds:
+      - node -e "const {spawnSync}=require('child_process');const run=a=>spawnSync(process.execPath,['dist/cli.js',...a],{stdio:'inherit'}).status;const s=run(['--trace-name','smoke','--build-id','1']);const f=run(['--trace-name','smoke','--build-id','1','--fail']);console.log('success='+s+' failure='+f);if(s!==0||f!==1)process.exit(1)"
+
+  docker:build:
+    desc: Build the Docker image
+    cmds:
+      - docker build -t {{.IMAGE}} .

@@ -1,0 +1,18 @@
+name: 'CI APM Trace'
+description: 'Sends CI pipeline traces to Elastic APM'
+author: 'Your Team'
+branding:
+  icon: 'activity'
+  color: 'blue'
+inputs:
+  trace-name:
+    description: 'Name of the pipeline trace'
+    required: false
+    default: 'github-action'
+  fail:
+    description: 'Force the trace to end as a failure'
+    required: false
+    default: 'false'
+runs:
+  using: 'node20'
+  main: 'dist/github-wrapper.js'
