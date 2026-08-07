@@ -46,7 +46,43 @@ tasks:
     cmds:
       - node -e "const {spawnSync}=require('child_process');const run=a=>spawnSync(process.execPath,['dist/cli.js',...a],{stdio:'inherit'}).status;const s=run(['--trace-name','smoke','--build-id','1']);const f=run(['--trace-name','smoke','--build-id','1','--fail']);console.log('success='+s+' failure='+f);if(s!==0||f!==1)process.exit(1)"
 
+  test:proxy:
+    desc: Verify traces are routed through an HTTP(S) proxy via HTTP_PROXY/HTTPS_PROXY/NO_PROXY
+    deps: [build]
+    cmds:
+      - node scripts/test-proxy.js
+
   docker:build:
     desc: Build the Docker image
     cmds:
       - docker build -t {{.IMAGE}} .
+
+  package:azure:
+    desc: Package the Azure DevOps task extension into a .vsix
+    deps: [build]
+    cmds:
+      - npm run icons
+      - npm run package:azure
+
+  publish:azure:
+    desc: Publish the Azure DevOps task extension to the Marketplace
+    deps: [package:azure]
+    cmds:
+      - npx tfx extension publish --manifest-globs vss-extension.json --token {{.AZURE_DEVOPS_TOKEN}}
+
+  bundle:github:
+    desc: Bundle the GitHub Action into a self-contained dist/cli.js via ncc
+    deps: [build]
+    cmds:
+      - npm run bundle:github
+
+  publish:github:
+    desc: Publish the GitHub Action (bundle, tag, and create a Marketplace release)
+    deps: [bundle:github]
+    cmds:
+      - npm version {{.VERSION}} --no-git-tag-version
+      - git add -f dist package.json package-lock.json
+      - "git commit -m 'chore(release): v{{.VERSION}}'"
+      - git tag v{{.VERSION}}
+      - git push origin HEAD --follow-tags
+      - gh release create v{{.VERSION}} --generate-notes

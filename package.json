@@ -12,19 +12,24 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
-    "start": "node dist/cli.js"
+    "start": "node dist/cli.js",
+    "icons": "node scripts/gen-icon.js",
+    "bundle:github": "node scripts/bundle-github.js",
+    "package:azure": "node scripts/package-azure.js"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
+    "axios": "^1.19.0",
     "azure-pipelines-task-lib": "^5.0.0",
-    "elastic-apm-node": "^4.13.0",
     "yargs": "^17.7.2"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
     "@types/yargs": "^17.0.32",
+    "@vercel/ncc": "^0.44.1",
+    "tfx-cli": "^0.23.4",
     "typescript": "^5.5.0"
   }
 }

@@ -1,17 +1,140 @@
 name: Publish
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 1.0.0, patch, minor, major)'
+        required: true
+        default: 'patch'
+      publish_azure:
+        description: 'Publish the Azure DevOps extension to the Marketplace'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
 
 jobs:
+  prepare:
+    name: Bump version, sync manifests, tag, and commit the action bundle
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      major: ${{ steps.version.outputs.major }}
+      minor: ${{ steps.version.outputs.minor }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure Git
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+
+      - run: npm ci
+      - run: npm run build
+      - run: npm run bundle:github
+
+      - name: Version bump and sync manifests
+        id: version
+        run: |
+          npm version "${{ inputs.version }}" --no-git-tag-version
+          VERSION=$(node -p "require('./package.json').version")
+          MAJOR=$(echo "${VERSION}" | cut -d. -f1)
+          MINOR=$(echo "${VERSION}" | cut -d. -f2)
+          PATCH=$(echo "${VERSION}" | cut -d. -f3)
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "major=${MAJOR}" >> "$GITHUB_OUTPUT"
+          echo "minor=${MINOR}" >> "$GITHUB_OUTPUT"
+          VERSION="${VERSION}" MAJOR="${MAJOR}" MINOR="${MINOR}" PATCH="${PATCH}" node -e "
+            const fs = require('fs')
+            const vss = JSON.parse(fs.readFileSync('vss-extension.json', 'utf8'))
+            vss.version = process.env.VERSION
+            fs.writeFileSync('vss-extension.json', JSON.stringify(vss, null, 2) + '\n')
+            const task = JSON.parse(fs.readFileSync('task.json', 'utf8'))
+            task.version.Major = Number(process.env.MAJOR)
+            task.version.Minor = Number(process.env.MINOR)
+            task.version.Patch = Number(process.env.PATCH)
+            fs.writeFileSync('task.json', JSON.stringify(task, null, 2) + '\n')
+          "
+
+      - name: Commit bundled action, version bump, and manifest sync
+        run: |
+          git add -f dist package.json package-lock.json vss-extension.json task.json
+          git commit -m "chore(release): ${{ steps.version.outputs.tag }}"
+
+      - name: Create semver tags
+        run: |
+          git tag "${{ steps.version.outputs.tag }}"
+          git tag "v${{ steps.version.outputs.major }}"
+          git tag "v${{ steps.version.outputs.major }}.${{ steps.version.outputs.minor }}"
+
+      - name: Push commit and tags
+        run: |
+          git push origin HEAD:refs/heads/main
+          git push origin refs/tags/${{ steps.version.outputs.tag }}
+          # move the rolling v1 / v1.x tags so `uses: org/ci-apm-trace@v1` keeps working
+          git push origin :refs/tags/v${{ steps.version.outputs.major }} :refs/tags/v${{ steps.version.outputs.major }}.${{ steps.version.outputs.minor }} || true
+          git push origin refs/tags/v${{ steps.version.outputs.major }} refs/tags/v${{ steps.version.outputs.major }}.${{ steps.version.outputs.minor }}
+
+  github-action:
+    name: Publish GitHub Action to the Marketplace
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ needs.prepare.outputs.tag }}
+
+      - name: Assemble action bundle
+        run: tar -czf ci-apm-trace-action.tar.gz action.yml dist
+
+      - name: Create GitHub release (publishes to the Marketplace)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          files: ci-apm-trace-action.tar.gz
+          generate_release_notes: true
+
+  npm:
+    name: Publish to npm
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ needs.prepare.outputs.tag }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
   docker:
     name: Publish Docker image (Docker Hub + GHCR)
+    needs: prepare
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -20,6 +143,8 @@ jobs:
       DOCKERHUB_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/ci-apm-trace
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ needs.prepare.outputs.tag }}
 
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
@@ -45,9 +170,9 @@ jobs:
             ${{ env.DOCKERHUB_IMAGE }}
             ghcr.io/${{ github.repository }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
+            type=raw,value=${{ needs.prepare.outputs.tag }}
+            type=raw,value=v${{ needs.prepare.outputs.major }}
+            type=raw,value=v${{ needs.prepare.outputs.major }}.${{ needs.prepare.outputs.minor }}
             type=raw,value=latest
 
       - name: Build and push
@@ -59,14 +184,16 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  release:
-    name: Create GitHub release with action bundle
+  azure:
+    name: Publish Azure DevOps extension
+    needs: prepare
     runs-on: ubuntu-latest
-    needs: [npm, docker]
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ needs.prepare.outputs.tag }}
 
       - uses: actions/setup-node@v4
         with:
@@ -74,15 +201,18 @@ jobs:
 
       - run: npm ci
       - run: npm run build
+      - run: npm run icons
 
-      - name: Assemble action bundle (dist + production dependencies)
-        run: |
-          npm prune --omit=dev
-          tar -czf ci-apm-trace-action.tar.gz \
-            action.yml task.json package.json package-lock.json \
-            dist node_modules
+      - name: Create .vsix
+        run: node scripts/package-azure.js
 
-      - uses: softprops/action-gh-release@v2
+      - uses: actions/upload-artifact@v4
         with:
-          files: ci-apm-trace-action.tar.gz
-          generate_release_notes: true
+          name: azure-extension
+          path: out/*.vsix
+
+      - name: Publish to Marketplace
+        if: inputs.publish_azure == 'true'
+        run: npx tfx extension publish --manifest-globs vss-extension.json --token "$AZURE_DEVOPS_EXTENSION_PAT" --output-path out
+        env:
+          AZURE_DEVOPS_EXTENSION_PAT: ${{ secrets.AZURE_DEVOPS_EXTENSION_PAT }}

@@ -1,6 +1,6 @@
 name: 'CI APM Trace'
 description: 'Sends CI pipeline traces to Elastic APM'
-author: 'Your Team'
+author: 'kester.simm.mockholm@outlook.com'
 branding:
   icon: 'activity'
   color: 'blue'

@@ -1,31 +1,267 @@
-import apm from 'elastic-apm-node'
+import axios from 'axios'
+import { randomBytes } from 'crypto'
+import pkg from '../package.json'
 
 export interface ApmInitOptions {
   serverUrl?: string
   secretToken?: string
+  apiKey?: string
   serviceName?: string
 }
 
-export function initApm(options: ApmInitOptions = {}): typeof apm {
-  const serverUrl = options.serverUrl ?? process.env.ELASTIC_APM_SERVER_URL
-  const secretToken = options.secretToken ?? process.env.ELASTIC_APM_SECRET_TOKEN
-  const serviceName = options.serviceName ?? process.env.ELASTIC_APM_SERVICE_NAME ?? 'ci-apm-trace'
+export interface Transaction {
+  result: string
+  setLabel(name: string, value: string): void
+  end(): void
+}
 
-  if (serverUrl) {
-    process.env.ELASTIC_APM_SERVER_URL = serverUrl
+export interface Span {
+  end(): void
+}
+
+export interface ApmAgent {
+  startTransaction(name: string, type: string): Transaction
+  startSpan(name: string, type: string): Span | null
+  captureError(error: Error): void
+  flush(): Promise<void>
+}
+
+interface PendingSpan {
+  id: string
+  name: string
+  type: string
+  startMs: number
+  durationMs: number
+}
+
+interface PendingError {
+  id: string
+  timestampUs: number
+  message: string
+  type: string
+  stacktrace?: string
+}
+
+interface PendingTransaction {
+  id: string
+  traceId: string
+  name: string
+  type: string
+  startMs: number
+  durationMs: number
+  result: string
+  labels: Record<string, string>
+  spans: PendingSpan[]
+  errors: PendingError[]
+  ended: boolean
+}
+
+function randomId(): string {
+  return randomBytes(8).toString('hex')
+}
+
+function roundMs(ms: number): number {
+  return Math.round(ms * 1000) / 1000
+}
+
+class ApmClient implements ApmAgent {
+  private readonly serverUrl: string | undefined
+  private readonly secretToken: string | undefined
+  private readonly apiKey: string | undefined
+  private readonly serviceName: string
+  private readonly transactions: PendingTransaction[] = []
+  private currentTransaction: PendingTransaction | null = null
+
+  constructor(options: ApmInitOptions = {}) {
+    this.serverUrl = options.serverUrl ?? process.env.ELASTIC_APM_SERVER_URL
+    this.secretToken = options.secretToken ?? process.env.ELASTIC_APM_SECRET_TOKEN
+    this.apiKey = options.apiKey ?? process.env.ELASTIC_APM_API_KEY
+    this.serviceName = options.serviceName ?? process.env.ELASTIC_APM_SERVICE_NAME ?? 'ci-apm-trace'
   }
-  if (secretToken) {
-    process.env.ELASTIC_APM_SECRET_TOKEN = secretToken
+
+  startTransaction(name: string, type: string): Transaction {
+    const transaction: PendingTransaction = {
+      id: randomId(),
+      traceId: randomId() + randomId(),
+      name,
+      type,
+      startMs: Date.now(),
+      durationMs: 0,
+      result: 'unknown',
+      labels: {},
+      spans: [],
+      errors: [],
+      ended: false,
+    }
+    this.transactions.push(transaction)
+    this.currentTransaction = transaction
+    return {
+      setLabel(label, value) {
+        transaction.labels[label] = value
+      },
+      end() {
+        if (!transaction.ended) {
+          transaction.durationMs = Date.now() - transaction.startMs
+          transaction.ended = true
+        }
+      },
+      get result() {
+        return transaction.result
+      },
+      set result(value: string) {
+        transaction.result = value
+      },
+    }
   }
-  process.env.ELASTIC_APM_SERVICE_NAME = serviceName
-  process.env.ELASTIC_APM_ENVIRONMENT = 'ci'
 
-  apm.start({
-    serviceName,
-    environment: 'ci',
-    ...(serverUrl ? { serverUrl } : {}),
-    ...(secretToken ? { secretToken } : {}),
-  })
+  startSpan(name: string, type: string): Span | null {
+    if (!this.currentTransaction) {
+      return null
+    }
+    const span: PendingSpan = {
+      id: randomId(),
+      name,
+      type,
+      startMs: Date.now(),
+      durationMs: 0,
+    }
+    this.currentTransaction.spans.push(span)
+    return {
+      end() {
+        span.durationMs = Date.now() - span.startMs
+      },
+    }
+  }
 
-  return apm
+  captureError(error: Error): void {
+    if (!this.currentTransaction) {
+      return
+    }
+    this.currentTransaction.errors.push({
+      id: randomId(),
+      timestampUs: Date.now() * 1000,
+      message: error.message,
+      type: error.name || 'Error',
+      stacktrace: error.stack,
+    })
+  }
+
+  async flush(): Promise<void> {
+    if (!this.serverUrl) {
+      this.transactions.length = 0
+      this.currentTransaction = null
+      return
+    }
+    const pending = this.transactions.splice(0, this.transactions.length)
+    this.currentTransaction = null
+    if (pending.length === 0) {
+      return
+    }
+    const url = `${this.serverUrl.replace(/\/+$/, '')}/intake/v2/events`
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/x-ndjson',
+      'User-Agent': `ci-apm-trace/${pkg.version}`,
+    }
+    if (this.apiKey) {
+      headers['Authorization'] = `ApiKey ${this.apiKey}`
+    } else if (this.secretToken) {
+      headers['Authorization'] = `Bearer ${this.secretToken}`
+    }
+    try {
+      await axios.post(url, this.serialize(pending), { headers, timeout: 10000 })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.warn(`ci-apm-trace: failed to send traces to ${this.serverUrl}: ${message}`)
+    }
+  }
+
+  private serialize(transactions: PendingTransaction[]): string {
+    const lines: string[] = [
+      JSON.stringify({
+        metadata: {
+          service: {
+            name: this.serviceName,
+            environment: 'ci',
+            agent: {
+              name: 'ci-apm-trace',
+              version: pkg.version,
+            },
+          },
+        },
+      }),
+    ]
+    for (const t of transactions) {
+      for (const span of t.spans) {
+        lines.push(
+          JSON.stringify({
+            span: {
+              id: span.id,
+              trace_id: t.traceId,
+              transaction_id: t.id,
+              parent_id: t.id,
+              name: span.name,
+              type: span.type,
+              timestamp: span.startMs * 1000,
+              duration: roundMs(span.durationMs),
+              outcome: 'success',
+            },
+          })
+        )
+      }
+      for (const err of t.errors) {
+        lines.push(
+          JSON.stringify({
+            error: {
+              id: err.id,
+              trace_id: t.traceId,
+              transaction_id: t.id,
+              timestamp: err.timestampUs,
+              exception: {
+                message: err.message,
+                type: err.type,
+                stacktrace: err.stacktrace,
+              },
+            },
+          })
+        )
+      }
+      lines.push(
+        JSON.stringify({
+          transaction: {
+            id: t.id,
+            trace_id: t.traceId,
+            name: t.name,
+            type: t.type,
+            result: t.result,
+            outcome:
+              t.result === 'failure'
+                ? 'failure'
+                : t.result === 'success'
+                  ? 'success'
+                  : 'unknown',
+            timestamp: t.startMs * 1000,
+            duration: roundMs(t.durationMs),
+            sampled: true,
+            span_count: { started: t.spans.length },
+            ...(Object.keys(t.labels).length > 0 ? { context: { tags: t.labels } } : {}),
+          },
+        })
+      )
+    }
+    return `${lines.join('\n')}\n`
+  }
+}
+
+let current: ApmAgent = new ApmClient()
+
+export function initApm(options: ApmInitOptions = {}): ApmAgent {
+  current = new ApmClient(options)
+  return current
+}
+
+export const apm: ApmAgent = {
+  startTransaction: (name, type) => current.startTransaction(name, type),
+  startSpan: (name, type) => current.startSpan(name, type),
+  captureError: (error) => current.captureError(error),
+  flush: () => current.flush(),
 }

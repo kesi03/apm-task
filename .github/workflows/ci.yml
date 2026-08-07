@@ -22,3 +22,5 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
+      - run: node scripts/test-proxy.js
+      - run: npm run bundle:github

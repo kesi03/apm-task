@@ -1,4 +1,4 @@
-import apm, { Span, Transaction } from 'elastic-apm-node'
+import { apm, ApmAgent, Span, Transaction } from './apm'
 
 export interface PipelineLabels {
   buildId?: string
@@ -18,7 +18,7 @@ export interface PipelineLifecycle {
   endPipelineFailure(error: Error): Promise<void>
 }
 
-export function createLifecycle(agent: typeof apm = apm): PipelineLifecycle {
+export function createLifecycle(agent: ApmAgent = apm): PipelineLifecycle {
   let transaction: Transaction | null = null
   let currentSpan: Span | null = null
 

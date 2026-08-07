@@ -1,0 +1,35 @@
+{
+  "manifestVersion": 1,
+  "id": "ci-apm-trace",
+  "name": "CI APM Trace",
+  "version": "1.0.0",
+  "publisher": "Mockholm",
+  "description": "Sends CI pipeline traces to Elastic APM",
+  "categories": ["Azure Pipelines"],
+  "tags": ["elastic", "apm", "trace", "monitoring", "ci"],
+  "icons": {
+    "default": "icons/128.png"
+  },
+  "files": [
+    { "path": "CiApmTrace" },
+    { "path": "overview.md" }
+  ],
+  "content": {
+    "details": {
+      "path": "overview.md"
+    }
+  },
+  "targets": [
+    { "id": "Microsoft.VisualStudio.Services" }
+  ],
+  "contributions": [
+    {
+      "id": "CiApmTrace",
+      "type": "ms.vss-distributed-task.task",
+      "targets": ["ms.vss-distributed-task.tasks"],
+      "properties": {
+        "name": "CiApmTrace"
+      }
+    }
+  ]
+}

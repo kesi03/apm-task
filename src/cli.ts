@@ -93,16 +93,18 @@ async function main(): Promise<void> {
   lifecycle.addStep('cli-run')
 
   if (argv.fail) {
-    await lifecycle.endPipelineFailure(new Error('Pipeline failed because --fail was set'))
     process.exitCode = 1
+    await lifecycle.endPipelineFailure(new Error('Pipeline failed because --fail was set'))
+    process.exit(1)
   } else {
-    await lifecycle.endPipelineSuccess()
     process.exitCode = 0
+    await lifecycle.endPipelineSuccess()
+    process.exit(0)
   }
 }
 
 main().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : String(error)
   console.error(`ci-apm-trace failed: ${message}`)
-  process.exitCode = 1
+  process.exit(1)
 })
