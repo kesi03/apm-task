@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "ci-apm-trace",
   "name": "CI APM Trace",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "publisher": "Mockholm",
   "description": "Sends CI pipeline traces to Elastic APM",
   "galleryFlags": [
