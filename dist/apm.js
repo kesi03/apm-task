@@ -11,6 +11,9 @@ const package_json_1 = __importDefault(require("../package.json"));
 function randomId() {
     return (0, crypto_1.randomBytes)(8).toString('hex');
 }
+function nonEmpty(value) {
+    return value && value.trim() ? value.trim() : undefined;
+}
 function roundMs(ms) {
     return Math.round(ms * 1000) / 1000;
 }
@@ -18,10 +21,10 @@ class ApmClient {
     constructor(options = {}) {
         this.transactions = [];
         this.currentTransaction = null;
-        this.serverUrl = options.serverUrl ?? process.env.ELASTIC_APM_SERVER_URL;
-        this.secretToken = options.secretToken ?? process.env.ELASTIC_APM_SECRET_TOKEN;
-        this.apiKey = options.apiKey ?? process.env.ELASTIC_APM_API_KEY;
-        this.serviceName = options.serviceName ?? process.env.ELASTIC_APM_SERVICE_NAME ?? 'ci-apm-trace';
+        this.serverUrl = nonEmpty(options.serverUrl ?? process.env.ELASTIC_APM_SERVER_URL);
+        this.secretToken = nonEmpty(options.secretToken ?? process.env.ELASTIC_APM_SECRET_TOKEN);
+        this.apiKey = nonEmpty(options.apiKey ?? process.env.ELASTIC_APM_API_KEY);
+        this.serviceName = nonEmpty(options.serviceName ?? process.env.ELASTIC_APM_SERVICE_NAME) ?? 'ci-apm-trace';
     }
     startTransaction(name, type) {
         const transaction = {

@@ -15,6 +15,8 @@ function main() {
     const args = [];
     const traceName = getInput('trace-name') || 'github-action';
     const fail = (getInput('fail') || 'false').toLowerCase() === 'true';
+    const apmServer = getInput('apm-server');
+    const apmToken = getInput('apm-token');
     addArg(args, '--trace-name', traceName);
     addArg(args, '--build-id', process.env.GITHUB_RUN_ID);
     addArg(args, '--build-number', process.env.GITHUB_RUN_NUMBER);
@@ -25,8 +27,17 @@ function main() {
     if (fail) {
         args.push('--fail');
     }
+    const env = {
+        ...process.env,
+    };
+    if (apmServer) {
+        env.ELASTIC_APM_SERVER_URL = apmServer;
+    }
+    if (apmToken) {
+        env.ELASTIC_APM_SECRET_TOKEN = apmToken;
+    }
     const cli = (0, path_1.resolve)(__dirname, 'cli.js');
-    const result = (0, child_process_1.spawnSync)(process.execPath, [cli, ...args], { stdio: 'inherit' });
+    const result = (0, child_process_1.spawnSync)(process.execPath, [cli, ...args], { stdio: 'inherit', env });
     if (result.error) {
         console.error(`ci-apm-trace github wrapper failed: ${result.error.message}`);
         process.exit(1);
