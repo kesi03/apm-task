@@ -60,6 +60,10 @@ function randomId(): string {
   return randomBytes(8).toString('hex')
 }
 
+function nonEmpty(value: string | undefined): string | undefined {
+  return value && value.trim() ? value.trim() : undefined
+}
+
 function roundMs(ms: number): number {
   return Math.round(ms * 1000) / 1000
 }
@@ -73,10 +77,10 @@ class ApmClient implements ApmAgent {
   private currentTransaction: PendingTransaction | null = null
 
   constructor(options: ApmInitOptions = {}) {
-    this.serverUrl = options.serverUrl ?? process.env.ELASTIC_APM_SERVER_URL
-    this.secretToken = options.secretToken ?? process.env.ELASTIC_APM_SECRET_TOKEN
-    this.apiKey = options.apiKey ?? process.env.ELASTIC_APM_API_KEY
-    this.serviceName = options.serviceName ?? process.env.ELASTIC_APM_SERVICE_NAME ?? 'ci-apm-trace'
+    this.serverUrl = nonEmpty(options.serverUrl ?? process.env.ELASTIC_APM_SERVER_URL)
+    this.secretToken = nonEmpty(options.secretToken ?? process.env.ELASTIC_APM_SECRET_TOKEN)
+    this.apiKey = nonEmpty(options.apiKey ?? process.env.ELASTIC_APM_API_KEY)
+    this.serviceName = nonEmpty(options.serviceName ?? process.env.ELASTIC_APM_SERVICE_NAME) ?? 'ci-apm-trace'
   }
 
   startTransaction(name: string, type: string): Transaction {
