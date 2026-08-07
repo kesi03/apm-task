@@ -5,6 +5,9 @@
   "version": "1.0.1",
   "publisher": "Mockholm",
   "description": "Sends CI pipeline traces to Elastic APM",
+  "galleryFlags": [
+    "Public"
+  ],
   "categories": [
     "Azure Pipelines"
   ],

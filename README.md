@@ -271,7 +271,7 @@ npx tfx extension publish \
   --output-path out
 ```
 
-To keep the extension private and share it only with specific organizations, pass `--share-with`:
+The extension is published **public** by default because `vss-extension.json` declares `"galleryFlags": ["Public"]`. To keep it private and share it only with specific organizations, remove that flag and pass `--share-with`:
 
 ```bash
 npx tfx extension publish \
@@ -280,7 +280,9 @@ npx tfx extension publish \
   --share-with my-azure-devops-organization
 ```
 
-Making the extension **public** requires Microsoft marketplace approval after the first publish.
+To publish without waiting for the Marketplace's validation result (useful in CI), pass `--no-wait-validation` — the workflow already does this.
+
+Making the extension **public** requires Microsoft Marketplace approval after the first publish, and your publisher must be **verified**. You can start the verification process at `https://marketplace.visualstudio.com/manage/publishers/<publisher>`. Until verification completes, the extension stays private even with the `Public` flag.
 
 ### 4. Install the extension
 
