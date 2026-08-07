@@ -18,6 +18,8 @@ function main(): void {
 
   const traceName = getInput('trace-name') || 'github-action'
   const fail = (getInput('fail') || 'false').toLowerCase() === 'true'
+  const apmServer = getInput('apm-server')
+  const apmToken = getInput('apm-token')
 
   addArg(args, '--trace-name', traceName)
   addArg(args, '--build-id', process.env.GITHUB_RUN_ID)
@@ -30,8 +32,18 @@ function main(): void {
     args.push('--fail')
   }
 
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+  }
+  if (apmServer) {
+    env.ELASTIC_APM_SERVER_URL = apmServer
+  }
+  if (apmToken) {
+    env.ELASTIC_APM_SECRET_TOKEN = apmToken
+  }
+
   const cli = resolve(__dirname, 'cli.js')
-  const result = spawnSync(process.execPath, [cli, ...args], { stdio: 'inherit' })
+  const result = spawnSync(process.execPath, [cli, ...args], { stdio: 'inherit', env })
 
   if (result.error) {
     console.error(`ci-apm-trace github wrapper failed: ${result.error.message}`)

@@ -34,6 +34,20 @@
       "defaultValue": false,
       "required": false,
       "helpMarkDown": "Force the trace to end as a failure"
+    },
+    {
+      "name": "apmServer",
+      "type": "string",
+      "label": "APM server URL",
+      "required": false,
+      "helpMarkDown": "Elastic APM server URL. Overrides the ELASTIC_APM_SERVER_URL environment variable."
+    },
+    {
+      "name": "apmToken",
+      "type": "string",
+      "label": "APM secret token",
+      "required": false,
+      "helpMarkDown": "Elastic APM secret token. Overrides the ELASTIC_APM_SECRET_TOKEN environment variable."
     }
   ],
   "execution": {

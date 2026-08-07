@@ -13,6 +13,12 @@ inputs:
     description: 'Force the trace to end as a failure'
     required: false
     default: 'false'
+  apm-server:
+    description: 'Elastic APM server URL. Overrides the ELASTIC_APM_SERVER_URL environment variable.'
+    required: false
+  apm-token:
+    description: 'Elastic APM secret token. Overrides the ELASTIC_APM_SECRET_TOKEN environment variable.'
+    required: false
 runs:
   using: 'node20'
   main: 'dist/github-wrapper.js'

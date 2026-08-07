@@ -12,6 +12,8 @@ function main(): void {
   try {
     const traceName = tl.getInput('traceName', false) || 'azure-devops'
     const fail = tl.getBoolInput('fail', false)
+    const apmServer = tl.getInput('apmServer', false)
+    const apmToken = tl.getInput('apmToken', false)
 
     const args: string[] = ['--trace-name', traceName]
     addArg(args, '--build-id', tl.getVariable('Build.BuildId'))
@@ -28,6 +30,12 @@ function main(): void {
       ...process.env,
       RUNNER_OS: tl.getVariable('Agent.OS') ?? process.env.RUNNER_OS ?? '',
       RUNNER_ARCH: tl.getVariable('Agent.OSArchitecture') ?? process.env.RUNNER_ARCH ?? '',
+    }
+    if (apmServer) {
+      env.ELASTIC_APM_SERVER_URL = apmServer
+    }
+    if (apmToken) {
+      env.ELASTIC_APM_SECRET_TOKEN = apmToken
     }
 
     const cli = resolve(__dirname, 'cli.js')

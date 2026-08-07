@@ -102,7 +102,7 @@ node dist/cli.js --trace-name my-pipeline --build-id 1
 
 ## GitHub Action
 
-`action.yml` defines the inputs `trace-name` (default `github-action`) and `fail` (default `false`). The wrapper reads `GITHUB_RUN_ID`, `GITHUB_RUN_NUMBER`, `GITHUB_REF_NAME`, `GITHUB_SHA`, `GITHUB_REPOSITORY`, `RUNNER_OS`, and `RUNNER_ARCH` automatically.
+`action.yml` defines the inputs `trace-name` (default `github-action`), `fail` (default `false`), `apm-server`, and `apm-token`. The wrapper reads `GITHUB_RUN_ID`, `GITHUB_RUN_NUMBER`, `GITHUB_REF_NAME`, `GITHUB_SHA`, `GITHUB_REPOSITORY`, `RUNNER_OS`, and `RUNNER_ARCH` automatically. The `apm-server` and `apm-token` inputs override the `ELASTIC_APM_SERVER_URL` / `ELASTIC_APM_SECRET_TOKEN` environment variables.
 
 Example workflow:
 
@@ -123,9 +123,8 @@ jobs:
         uses: your-org/ci-apm-trace@v1
         with:
           trace-name: ci-build
-        env:
-          ELASTIC_APM_SERVER_URL: ${{ secrets.ELASTIC_APM_SERVER_URL }}
-          ELASTIC_APM_SECRET_TOKEN: ${{ secrets.ELASTIC_APM_SECRET_TOKEN }}
+          apm-server: ${{ secrets.ELASTIC_APM_SERVER_URL }}
+          apm-token: ${{ secrets.ELASTIC_APM_SECRET_TOKEN }}
 ```
 
 Force a failure trace for testing:
@@ -187,7 +186,7 @@ task publish:github VERSION=1.0.1
 
 ## Azure DevOps
 
-`task.json` defines the inputs `traceName` (default `azure-devops`) and `fail` (default `false`). The wrapper reads `Build.BuildId`, `Build.BuildNumber`, `Build.SourceBranchName`, `Build.SourceVersion`, `Build.Repository.Name`, `Agent.OS`, and `Agent.OSArchitecture` automatically.
+`task.json` defines the inputs `traceName` (default `azure-devops`), `fail` (default `false`), `apmServer`, and `apmToken`. The wrapper reads `Build.BuildId`, `Build.BuildNumber`, `Build.SourceBranchName`, `Build.SourceVersion`, `Build.Repository.Name`, `Agent.OS`, and `Agent.OSArchitecture` automatically. The `apmServer` and `apmToken` inputs override the `ELASTIC_APM_SERVER_URL` / `ELASTIC_APM_SECRET_TOKEN` environment variables.
 
 Example pipeline:
 
@@ -206,12 +205,11 @@ steps:
     inputs:
       traceName: 'azure-pipeline'
       fail: false
-    env:
-      ELASTIC_APM_SERVER_URL: $(ELASTIC_APM_SERVER_URL)
-      ELASTIC_APM_SECRET_TOKEN: $(ELASTIC_APM_SECRET_TOKEN)
+      apmServer: $(ELASTIC_APM_SERVER_URL)
+      apmToken: $(ELASTIC_APM_SECRET_TOKEN)
 ```
 
-Set the `ELASTIC_APM_SERVER_URL` and `ELASTIC_APM_SECRET_TOKEN` as pipeline variables (mark the token as secret). To distribute the task as an extension, publish `task.json` and the compiled `dist/` via `tfx`/`vsce` with a `vss-extension.json` manifest.
+Set the `ELASTIC_APM_SERVER_URL` and `ELASTIC_APM_SECRET_TOKEN` as pipeline variables (mark the token as secret), or pass them directly via the `apmServer` and `apmToken` inputs. To distribute the task as an extension, publish `task.json` and the compiled `dist/` via `tfx`/`vsce` with a `vss-extension.json` manifest.
 
 ## Publishing to the Azure DevOps Marketplace
 
