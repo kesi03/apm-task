@@ -60,7 +60,12 @@
   ],
   "execution": {
     "Node20_1": {
-      "target": "dist/azure-wrapper.js"
+      "target": "dist/azure-main.js"
+    },
+    "PostJob": {
+      "Node20_1": {
+        "target": "dist/azure-postjob.js"
+      }
     }
   }
 }
