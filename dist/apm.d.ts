@@ -3,6 +3,7 @@ export interface ApmInitOptions {
     secretToken?: string;
     apiKey?: string;
     serviceName?: string;
+    debug?: boolean;
 }
 export interface Transaction {
     result: string;

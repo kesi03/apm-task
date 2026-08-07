@@ -39,6 +39,7 @@ The variables are picked up automatically from the environment; no extra wiring 
 | --- | --- | --- | --- |
 | `traceName` | string | `azure-devops` | Name of the pipeline trace |
 | `fail` | boolean | `false` | Force the trace to end as a failure (for testing) |
+| `debug` | boolean | `false` | Show the APM server response body in the build log |
 | `apmServer` | string | — | Elastic APM server URL. Overrides the `ELASTIC_APM_SERVER_URL` environment variable |
 | `apmToken` | string | — | Elastic APM secret token. Overrides the `ELASTIC_APM_SECRET_TOKEN` environment variable |
 

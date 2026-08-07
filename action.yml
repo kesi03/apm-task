@@ -13,6 +13,10 @@ inputs:
     description: 'Force the trace to end as a failure'
     required: false
     default: 'false'
+  debug:
+    description: 'Show the APM server response in the job log'
+    required: false
+    default: 'false'
   apm-server:
     description: 'Elastic APM server URL. Overrides the ELASTIC_APM_SERVER_URL environment variable.'
     required: false

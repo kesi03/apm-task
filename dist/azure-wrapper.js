@@ -45,6 +45,7 @@ function main() {
     try {
         const traceName = tl.getInput('traceName', false) || 'azure-devops';
         const fail = tl.getBoolInput('fail', false);
+        const debug = tl.getBoolInput('debug', false);
         const apmServer = tl.getInput('apmServer', false);
         const apmToken = tl.getInput('apmToken', false);
         const args = ['--trace-name', traceName];
@@ -56,6 +57,9 @@ function main() {
         addArg(args, '--ci-provider', 'azure-devops');
         if (fail) {
             args.push('--fail');
+        }
+        if (debug) {
+            args.push('--debug');
         }
         const env = {
             ...process.env,

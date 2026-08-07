@@ -7,6 +7,7 @@ export interface ApmInitOptions {
   secretToken?: string
   apiKey?: string
   serviceName?: string
+  debug?: boolean
 }
 
 export interface Transaction {
@@ -98,6 +99,7 @@ class ApmClient implements ApmAgent {
   private readonly secretToken: string | undefined
   private readonly apiKey: string | undefined
   private readonly serviceName: string
+  private readonly debug: boolean
   private readonly transactions: PendingTransaction[] = []
   private currentTransaction: PendingTransaction | null = null
 
@@ -106,6 +108,8 @@ class ApmClient implements ApmAgent {
     this.secretToken = nonEmpty(options.secretToken ?? process.env.ELASTIC_APM_SECRET_TOKEN)
     this.apiKey = nonEmpty(options.apiKey ?? process.env.ELASTIC_APM_API_KEY)
     this.serviceName = nonEmpty(options.serviceName ?? process.env.ELASTIC_APM_SERVICE_NAME) ?? 'ci-apm-trace'
+    const envDebug = (process.env.ELASTIC_APM_DEBUG ?? '').toLowerCase()
+    this.debug = Boolean(options.debug ?? (envDebug === 'true' || envDebug === '1'))
   }
 
   startTransaction(name: string, type: string): Transaction {
@@ -198,11 +202,25 @@ class ApmClient implements ApmAgent {
       headers['Authorization'] = `Bearer ${this.secretToken}`
     }
     try {
-      await axios.post(url, this.serialize(pending), { headers, timeout: 10000 })
+      const response = await axios.post(url, this.serialize(pending), { headers, timeout: 10000 })
+      if (this.debug) {
+        this.logServerResponse(response.status, response.data)
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       console.warn(`ci-apm-trace: failed to send traces to ${this.serverUrl}: ${message}`)
+      if (this.debug && axios.isAxiosError(error)) {
+        this.logServerResponse(error.response?.status, error.response?.data)
+      }
     }
+  }
+
+  private logServerResponse(status: number | undefined, data: unknown): void {
+    if (status === undefined) {
+      return
+    }
+    const body = data !== undefined && data !== '' ? `: ${JSON.stringify(data)}` : ' (no response body)'
+    console.log(`ci-apm-trace: APM server responded with status ${status}${body}`)
   }
 
   private serialize(transactions: PendingTransaction[]): string {

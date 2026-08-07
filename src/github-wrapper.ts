@@ -18,6 +18,7 @@ function main(): void {
 
   const traceName = getInput('trace-name') || 'github-action'
   const fail = (getInput('fail') || 'false').toLowerCase() === 'true'
+  const debug = (getInput('debug') || 'false').toLowerCase() === 'true'
   const apmServer = getInput('apm-server')
   const apmToken = getInput('apm-token')
 
@@ -30,6 +31,9 @@ function main(): void {
   addArg(args, '--ci-provider', 'github-actions')
   if (fail) {
     args.push('--fail')
+  }
+  if (debug) {
+    args.push('--debug')
   }
 
   const env: NodeJS.ProcessEnv = {

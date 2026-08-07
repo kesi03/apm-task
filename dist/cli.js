@@ -50,6 +50,8 @@ class ApmClient {
         this.secretToken = nonEmpty(options.secretToken ?? process.env.ELASTIC_APM_SECRET_TOKEN);
         this.apiKey = nonEmpty(options.apiKey ?? process.env.ELASTIC_APM_API_KEY);
         this.serviceName = nonEmpty(options.serviceName ?? process.env.ELASTIC_APM_SERVICE_NAME) ?? 'ci-apm-trace';
+        const envDebug = (process.env.ELASTIC_APM_DEBUG ?? '').toLowerCase();
+        this.debug = Boolean(options.debug ?? (envDebug === 'true' || envDebug === '1'));
     }
     startTransaction(name, type) {
         const transaction = {
@@ -139,12 +141,25 @@ class ApmClient {
             headers['Authorization'] = `Bearer ${this.secretToken}`;
         }
         try {
-            await axios_1.default.post(url, this.serialize(pending), { headers, timeout: 10000 });
+            const response = await axios_1.default.post(url, this.serialize(pending), { headers, timeout: 10000 });
+            if (this.debug) {
+                this.logServerResponse(response.status, response.data);
+            }
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             console.warn(`ci-apm-trace: failed to send traces to ${this.serverUrl}: ${message}`);
+            if (this.debug && axios_1.default.isAxiosError(error)) {
+                this.logServerResponse(error.response?.status, error.response?.data);
+            }
         }
+    }
+    logServerResponse(status, data) {
+        if (status === undefined) {
+            return;
+        }
+        const body = data !== undefined && data !== '' ? `: ${JSON.stringify(data)}` : ' (no response body)';
+        console.log(`ci-apm-trace: APM server responded with status ${status}${body}`);
     }
     serialize(transactions) {
         const lines = [
@@ -280,6 +295,11 @@ async function main() {
             default: false,
             description: 'Simulate a pipeline failure',
         },
+        debug: {
+            type: 'boolean',
+            default: false,
+            description: 'Show the APM server response in the output',
+        },
     })
         .parseSync();
     if (argv['build-id']) {
@@ -300,7 +320,7 @@ async function main() {
     if (argv['ci-provider']) {
         process.env.CI_PROVIDER = argv['ci-provider'];
     }
-    (0, apm_1.initApm)();
+    (0, apm_1.initApm)({ debug: argv.debug });
     const lifecycle = (0, lifecycle_1.createLifecycle)();
     const labels = {
         buildId: argv['build-id'],

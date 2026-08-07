@@ -36,6 +36,14 @@
       "helpMarkDown": "Force the trace to end as a failure"
     },
     {
+      "name": "debug",
+      "type": "boolean",
+      "label": "Debug output",
+      "defaultValue": false,
+      "required": false,
+      "helpMarkDown": "Show the APM server response body in the build log"
+    },
+    {
       "name": "apmServer",
       "type": "string",
       "label": "APM server URL",

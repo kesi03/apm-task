@@ -53,6 +53,7 @@ The APM client reads these environment variables:
 | `ELASTIC_APM_SECRET_TOKEN` | APM Server secret token | unset |
 | `ELASTIC_APM_API_KEY` | APM Server API key (overrides the secret token) | unset |
 | `ELASTIC_APM_SERVICE_NAME` | Service name shown in APM | `ci-apm-trace` |
+| `ELASTIC_APM_DEBUG` | Print the APM server response body (`true`/`1`) | `false` |
 
 The service environment is always set to `ci`.
 
@@ -70,6 +71,7 @@ Options:
   --repo            Repository name                      [string]
   --ci-provider     CI provider name                     [string]
   --fail            Simulate a pipeline failure          [boolean] [default: false]
+  --debug           Show the APM server response         [boolean] [default: false]
 ```
 
 Success (exit code 0):
@@ -102,7 +104,7 @@ node dist/cli.js --trace-name my-pipeline --build-id 1
 
 ## GitHub Action
 
-`action.yml` defines the inputs `trace-name` (default `github-action`), `fail` (default `false`), `apm-server`, and `apm-token`. The wrapper reads `GITHUB_RUN_ID`, `GITHUB_RUN_NUMBER`, `GITHUB_REF_NAME`, `GITHUB_SHA`, `GITHUB_REPOSITORY`, `RUNNER_OS`, and `RUNNER_ARCH` automatically. The `apm-server` and `apm-token` inputs override the `ELASTIC_APM_SERVER_URL` / `ELASTIC_APM_SECRET_TOKEN` environment variables.
+`action.yml` defines the inputs `trace-name` (default `github-action`), `fail` (default `false`), `debug` (default `false`), `apm-server`, and `apm-token`. The wrapper reads `GITHUB_RUN_ID`, `GITHUB_RUN_NUMBER`, `GITHUB_REF_NAME`, `GITHUB_SHA`, `GITHUB_REPOSITORY`, `RUNNER_OS`, and `RUNNER_ARCH` automatically. The `apm-server` and `apm-token` inputs override the `ELASTIC_APM_SERVER_URL` / `ELASTIC_APM_SECRET_TOKEN` environment variables.
 
 Example workflow:
 
@@ -186,7 +188,7 @@ task publish:github VERSION=1.0.1
 
 ## Azure DevOps
 
-`task.json` defines the inputs `traceName` (default `azure-devops`), `fail` (default `false`), `apmServer`, and `apmToken`. The wrapper reads `Build.BuildId`, `Build.BuildNumber`, `Build.SourceBranchName`, `Build.SourceVersion`, `Build.Repository.Name`, `Agent.OS`, and `Agent.OSArchitecture` automatically. The `apmServer` and `apmToken` inputs override the `ELASTIC_APM_SERVER_URL` / `ELASTIC_APM_SECRET_TOKEN` environment variables.
+`task.json` defines the inputs `traceName` (default `azure-devops`), `fail` (default `false`), `debug` (default `false`), `apmServer`, and `apmToken`. The wrapper reads `Build.BuildId`, `Build.BuildNumber`, `Build.SourceBranchName`, `Build.SourceVersion`, `Build.Repository.Name`, `Agent.OS`, and `Agent.OSArchitecture` automatically. The `apmServer` and `apmToken` inputs override the `ELASTIC_APM_SERVER_URL` / `ELASTIC_APM_SECRET_TOKEN` environment variables.
 
 Example pipeline:
 

@@ -14,6 +14,7 @@ interface CliArgs {
   repo?: string
   'ci-provider'?: string
   fail: boolean
+  debug: boolean
 }
 
 async function main(): Promise<void> {
@@ -53,6 +54,11 @@ async function main(): Promise<void> {
         default: false,
         description: 'Simulate a pipeline failure',
       },
+      debug: {
+        type: 'boolean',
+        default: false,
+        description: 'Show the APM server response in the output',
+      },
     })
     .parseSync() as unknown as CliArgs
 
@@ -75,7 +81,7 @@ async function main(): Promise<void> {
     process.env.CI_PROVIDER = argv['ci-provider']
   }
 
-  initApm()
+  initApm({ debug: argv.debug })
 
   const lifecycle = createLifecycle()
   const labels: PipelineLabels = {
