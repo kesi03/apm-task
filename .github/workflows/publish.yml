@@ -34,6 +34,8 @@ jobs:
       minor: ${{ steps.version.outputs.minor }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -85,11 +87,23 @@ jobs:
 
       - name: Push commit and tags
         run: |
-          git push origin HEAD:refs/heads/main
-          git push origin refs/tags/${{ steps.version.outputs.tag }}
+          retry() {
+            local n=0
+            until "$@"; do
+              n=$((n+1))
+              if [ "$n" -ge 6 ]; then
+                echo "push failed after $n attempts: $*"
+                return 1
+              fi
+              echo "push attempt $n failed ($*), retrying in $((n * 15))s..."
+              sleep $((n * 15))
+            done
+          }
+          retry git push origin HEAD:refs/heads/main
+          retry git push origin refs/tags/${{ steps.version.outputs.tag }}
           # move the rolling v1 / v1.x tags so `uses: org/ci-apm-trace@v1` keeps working
           git push origin :refs/tags/v${{ steps.version.outputs.major }} :refs/tags/v${{ steps.version.outputs.major }}.${{ steps.version.outputs.minor }} || true
-          git push origin refs/tags/v${{ steps.version.outputs.major }} refs/tags/v${{ steps.version.outputs.major }}.${{ steps.version.outputs.minor }}
+          retry git push origin refs/tags/v${{ steps.version.outputs.major }} refs/tags/v${{ steps.version.outputs.major }}.${{ steps.version.outputs.minor }}
 
   github-action:
     name: Publish GitHub Action to the Marketplace
