@@ -213,6 +213,6 @@ jobs:
 
       - name: Publish to Marketplace
         if: inputs.publish_azure == 'true'
-        run: npx tfx extension publish --manifest-globs vss-extension.json --token "$AZURE_DEVOPS_EXTENSION_PAT" --output-path out
+        run: npx tfx extension publish --manifest-globs vss-extension.json --token "$AZURE_DEVOPS_EXTENSION_PAT" --output-path out --no-wait-validation
         env:
           AZURE_DEVOPS_EXTENSION_PAT: ${{ secrets.AZURE_DEVOPS_EXTENSION_PAT }}
