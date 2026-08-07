@@ -82,8 +82,8 @@ jobs:
       - name: Create semver tags
         run: |
           git tag "${{ steps.version.outputs.tag }}"
-          git tag "v${{ steps.version.outputs.major }}"
-          git tag "v${{ steps.version.outputs.major }}.${{ steps.version.outputs.minor }}"
+          git tag -f "v${{ steps.version.outputs.major }}"
+          git tag -f "v${{ steps.version.outputs.major }}.${{ steps.version.outputs.minor }}"
 
       - name: Push commit and tags
         run: |
