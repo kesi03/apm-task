@@ -6,12 +6,15 @@
   "author": "kester.simm.mockholm@outlook.com",
   "helpMarkDown": "Sends CI pipeline traces to Elastic APM. Requires the ELASTIC_APM_SERVER_URL and ELASTIC_APM_SECRET_TOKEN environment variables to be set on the pipeline.",
   "category": "Utility",
-  "visibility": ["Build", "Release"],
+  "visibility": [
+    "Build",
+    "Release"
+  ],
   "demands": [],
   "version": {
     "Major": 1,
     "Minor": 0,
-    "Patch": 0
+    "Patch": 1
   },
   "minimumAgentVersion": "2.235.0",
   "instanceNameFormat": "CI APM Trace",
