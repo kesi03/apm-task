@@ -1,6 +1,6 @@
 {
   "name": "@mockholm/ci-apm-trace",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Sends CI pipeline traces to Elastic APM",
   "main": "dist/lifecycle.js",
   "bin": {
