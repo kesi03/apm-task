@@ -39,7 +39,14 @@ interface PendingError {
   timestampUs: number
   message: string
   type: string
-  stacktrace?: string
+  stacktrace?: StackFrame[]
+}
+
+interface StackFrame {
+  filename: string
+  function?: string
+  lineno?: number
+  colno?: number
 }
 
 interface PendingTransaction {
@@ -66,6 +73,24 @@ function nonEmpty(value: string | undefined): string | undefined {
 
 function roundMs(ms: number): number {
   return Math.round(ms * 1000) / 1000
+}
+
+function parseStack(stack: string): StackFrame[] {
+  const frames: StackFrame[] = []
+  for (const rawLine of stack.split('\n')) {
+    const match = /^at\s+(?:(.+?)\s+\()?(.+?):(\d+):(\d+)\)?\s*$/.exec(rawLine.trim())
+    if (!match) {
+      continue
+    }
+    const [, fn, file, lineNo, colNo] = match
+    frames.push({
+      filename: file,
+      ...(fn && fn !== '<anonymous>' ? { function: fn } : {}),
+      lineno: parseInt(lineNo, 10),
+      colno: parseInt(colNo, 10),
+    })
+  }
+  return frames
 }
 
 class ApmClient implements ApmAgent {
@@ -141,12 +166,13 @@ class ApmClient implements ApmAgent {
     if (!this.currentTransaction) {
       return
     }
+    const frames = error.stack ? parseStack(error.stack) : []
     this.currentTransaction.errors.push({
-      id: randomId(),
+      id: randomBytes(16).toString('hex'),
       timestampUs: Date.now() * 1000,
       message: error.message,
       type: error.name || 'Error',
-      stacktrace: error.stack,
+      ...(frames.length > 0 ? { stacktrace: frames } : {}),
     })
   }
 
