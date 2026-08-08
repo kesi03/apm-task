@@ -69,6 +69,9 @@ function getEndpointConfig() {
 }
 function initAzureApm() {
     const config = getEndpointConfig();
+    tl.debug(`Elastic APM server URL: ${config.serverUrl ? 'configured' : 'NOT SET (trace will be a no-op)'}`);
+    tl.debug(`Elastic APM secret token: ${config.secretToken ? 'configured' : 'not set'}`);
+    tl.debug(`Elastic APM debug: ${config.debug}`);
     return (0, apm_1.initApm)({
         serverUrl: config.serverUrl,
         secretToken: config.secretToken,
@@ -89,6 +92,7 @@ function pipelineTags() {
             tags[key] = value;
         }
     };
+    add('definition_name', tl.getVariable('Build.DefinitionName'));
     add('build_id', tl.getVariable('Build.BuildId'));
     add('build_number', tl.getVariable('Build.BuildNumber'));
     add('branch', tl.getVariable('Build.SourceBranchName'));

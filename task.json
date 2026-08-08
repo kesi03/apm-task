@@ -16,7 +16,7 @@
     "Minor": 1,
     "Patch": 3
   },
-  "minimumAgentVersion": "2.238.1",
+  "minimumAgentVersion": "4.248.0",
   "instanceNameFormat": "CI APM Trace",
   "inputs": [
     {
@@ -51,19 +51,22 @@
       "helpMarkDown": "Show the APM server response body in the build log"
     }
   ],
+  "prejobexecution": {
+    "Node20_1": {
+      "target": "dist/azure-prejob.js",
+      "argumentFormat": ""
+    }
+  },
   "execution": {
     "Node20_1": {
-      "target": "dist/azure-main.js"
-    },
-    "PreJob": {
-      "Node20_1": {
-        "target": "dist/azure-prejob.js"
-      }
-    },
-    "PostJob": {
-      "Node20_1": {
-        "target": "dist/azure-postjob.js"
-      }
+      "target": "dist/azure-main.js",
+      "argumentFormat": ""
+    }
+  },
+  "postjobexecution": {
+    "Node20_1": {
+      "target": "dist/azure-postjob.js",
+      "argumentFormat": ""
     }
   },
   "icon": "icons/icon.png"
