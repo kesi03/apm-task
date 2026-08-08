@@ -3,7 +3,7 @@ import { randomBytes } from 'crypto'
 import { ApmAgent, initApm } from './apm'
 
 export const ENDPOINT_INPUT = 'apmConnection'
-export const TOKEN_PARAM = 'apmSecretToken'
+export const TOKEN_PARAM = 'apitoken'
 
 export interface AzureEndpointConfig {
   serverUrl?: string

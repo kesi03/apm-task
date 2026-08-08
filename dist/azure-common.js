@@ -43,7 +43,7 @@ const tl = __importStar(require("azure-pipelines-task-lib"));
 const crypto_1 = require("crypto");
 const apm_1 = require("./apm");
 exports.ENDPOINT_INPUT = 'apmConnection';
-exports.TOKEN_PARAM = 'apmSecretToken';
+exports.TOKEN_PARAM = 'apitoken';
 function getEndpointConfig() {
     let serverUrl;
     let secretToken;

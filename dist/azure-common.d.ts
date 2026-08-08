@@ -1,6 +1,6 @@
 import { ApmAgent } from './apm';
 export declare const ENDPOINT_INPUT = "apmConnection";
-export declare const TOKEN_PARAM = "apmSecretToken";
+export declare const TOKEN_PARAM = "apitoken";
 export interface AzureEndpointConfig {
     serverUrl?: string;
     secretToken?: string;

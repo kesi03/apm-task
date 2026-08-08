@@ -69,12 +69,12 @@
             "headers": [
               {
                 "name": "Authorization",
-                "value": "Bearer {{endpoint.apmSecretToken}}"
+                "value": "Bearer {{endpoint.apitoken}}"
               }
             ],
             "inputDescriptors": [
               {
-                "id": "apmSecretToken",
+                "id": "apitoken",
                 "name": "APM Secret Token",
                 "description": "Secret token used to authenticate with the APM Server",
                 "inputMode": "passwordbox",
