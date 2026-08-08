@@ -28,6 +28,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Enable debug if repo variable is true
+        if: ${{ vars.DEBUG_MODE == 'true' }}
+        run: echo "ACTIONS_STEP_DEBUG=true" >> $GITHUB_ENV
+
       - name: Check APM secrets
         env:
           APM_SERVER: ${{ vars.ELASTIC_APM_SERVER_URL }}
