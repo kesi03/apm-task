@@ -14,7 +14,7 @@
   "version": {
     "Major": 1,
     "Minor": 1,
-    "Patch": 11
+    "Patch": 12
   },
   "minimumAgentVersion": "4.248.0",
   "instanceNameFormat": "CI APM Trace",
