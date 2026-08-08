@@ -16030,7 +16030,7 @@ module.exports = /*#__PURE__*/JSON.parse('{"application/1d-interleaved-parityfec
 /***/ ((module) => {
 
 "use strict";
-module.exports = /*#__PURE__*/JSON.parse('{"name":"@mockholm/ci-apm-trace","version":"1.1.9","description":"Sends CI pipeline traces to Elastic APM","main":"dist/lifecycle.js","bin":{"ci-apm-trace":"dist/cli.js"},"files":["dist"],"scripts":{"build":"tsc -p tsconfig.json","typecheck":"tsc --noEmit","start":"node dist/cli.js","icons":"node scripts/gen-icon.js","bundle:github":"node scripts/bundle-github.js","package:azure":"node scripts/package-azure.js"},"engines":{"node":">=18"},"dependencies":{"axios":"^1.19.0","azure-pipelines-task-lib":"^5.0.0","yargs":"^17.7.2"},"devDependencies":{"@types/node":"^20.14.0","@types/yargs":"^17.0.32","@vercel/ncc":"^0.44.1","tfx-cli":"^0.23.4","typescript":"^5.5.0"}}');
+module.exports = /*#__PURE__*/JSON.parse('{"name":"@mockholm/ci-apm-trace","version":"1.1.10","description":"Sends CI pipeline traces to Elastic APM","main":"dist/lifecycle.js","bin":{"ci-apm-trace":"dist/cli.js"},"files":["dist"],"scripts":{"build":"tsc -p tsconfig.json","typecheck":"tsc --noEmit","start":"node dist/cli.js","icons":"node scripts/gen-icon.js","bundle:github":"node scripts/bundle-github.js","package:azure":"node scripts/package-azure.js"},"engines":{"node":">=18"},"dependencies":{"axios":"^1.19.0","azure-pipelines-task-lib":"^5.0.0","yargs":"^17.7.2"},"devDependencies":{"@types/node":"^20.14.0","@types/yargs":"^17.0.32","@vercel/ncc":"^0.44.1","tfx-cli":"^0.23.4","typescript":"^5.5.0"}}');
 
 /***/ })
 
