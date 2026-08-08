@@ -203,9 +203,28 @@ and CI metadata variables.
 
 ## GitHub Action
 
-`action.yml` defines the inputs `trace-name` (default `github-action`), `fail` (default `false`), `debug` (default `false`), `apm-server`, and `apm-token`. The wrapper reads `GITHUB_RUN_ID`, `GITHUB_RUN_NUMBER`, `GITHUB_REF_NAME`, `GITHUB_SHA`, `GITHUB_REPOSITORY`, `RUNNER_OS`, and `RUNNER_ARCH` automatically. The `apm-server` and `apm-token` inputs override the `ELASTIC_APM_SERVER_URL` / `ELASTIC_APM_SECRET_TOKEN` environment variables.
+The action is a JavaScript action with `main` and `post` sections — the GitHub
+equivalent of the Azure task's `PreJob`/main/`PostJob` handlers:
 
-Example workflow:
+1. **Main phase** (`dist/github-wrapper.js`) runs `cli pre` to start the trace
+   and persist the trace IDs, then `cli main` to record the `Main Task
+   Execution` span.
+2. **Post phase** (`dist/github-post.js`) runs automatically when the job
+   finishes — even if later steps failed — and runs `cli post` to close the
+   `Job End` span, the pipeline transaction, and the metrics. The trace ends as
+   a failure whenever any step in the job failed or the job was cancelled.
+
+`action.yml` defines the inputs `trace-name` (default `github-action`), `fail`
+(default `false`), `debug` (default `false`), `apm-server`, and `apm-token`,
+plus a hidden `__job-status` input (default `${{ job.status }}`) that tells the
+post phase the job's final status. The wrapper reads `GITHUB_RUN_ID`,
+`GITHUB_RUN_NUMBER`, `GITHUB_REF_NAME`, `GITHUB_SHA`, `GITHUB_REPOSITORY`,
+`GITHUB_WORKFLOW`, `GITHUB_JOB`, `GITHUB_ACTOR`, `RUNNER_OS`, and `RUNNER_ARCH`
+automatically. The `apm-server` and `apm-token` inputs override the
+`ELASTIC_APM_SERVER_URL` / `ELASTIC_APM_SECRET_TOKEN` environment variables.
+
+Example workflow (place the action step anywhere in the job — the trace is
+ended after all steps run, so it reflects the job's final status):
 
 ```yaml
 name: CI
@@ -238,13 +257,17 @@ Force a failure trace for testing:
           fail: 'true'
 ```
 
+With `fail: 'true'` the main phase exits with code 1 (failing the step) and the
+post phase ends the trace as failed. Any other failing or cancelled step in the
+job ends the trace as failed too.
+
 ## Publishing the GitHub Action to the Marketplace
 
 GitHub Actions are published to the **GitHub Marketplace** by creating a release from a semver tag on the repository's default branch. There is no separate upload — the Marketplace picks up the `action.yml` at the repo root automatically.
 
 ### How the action is packaged
 
-The action is a JavaScript action that runs `dist/github-wrapper.js`, which spawns `dist/cli.js`. Both `dist/` and `node_modules/` are normally gitignored, so a plain tag/release would check out a broken action. To make it self-contained, `npm run bundle:github` compiles `dist/cli.js` into a single `@vercel/ncc` bundle (plus its `modules/` assets) that needs no runtime `node_modules`. The release commit must include that bundled `dist/`.
+The action is a JavaScript action that runs `dist/github-wrapper.js` (main phase) and `dist/github-post.js` (post phase), both of which spawn `dist/cli.js`. Both `dist/` and `node_modules/` are normally gitignored, so a plain tag/release would check out a broken action. To make it self-contained, `npm run bundle:github` compiles `dist/cli.js` into a single `@vercel/ncc` bundle (plus its `modules/` assets) that needs no runtime `node_modules`; the two wrapper scripts use only Node.js built-ins. The release commit must include that bundled `dist/`.
 
 ### Prerequisites
 

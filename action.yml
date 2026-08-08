@@ -23,6 +23,12 @@ inputs:
   apm-token:
     description: 'Elastic APM secret token. Overrides the ELASTIC_APM_SECRET_TOKEN environment variable.'
     required: false
+  __job-status:
+    description: 'Internal: the job status at the time the action runs. Do not set manually.'
+    required: false
+    default: '${{ job.status }}'
 runs:
   using: 'node20'
   main: 'dist/github-wrapper.js'
+  post: 'dist/github-post.js'
+  post-if: 'always()'
