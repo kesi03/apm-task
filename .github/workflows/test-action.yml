@@ -12,6 +12,11 @@ on:
         required: false
         type: boolean
         default: false
+      debug:
+        description: 'Print the APM server responses (status + body)'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -46,6 +51,7 @@ jobs:
           apm-server: ${{ secrets.ELASTIC_APM_SERVER_URL }}
           apm-token: ${{ secrets.ELASTIC_APM_SECRET_TOKEN }}
           fail: ${{ inputs.fail }}
+          debug: ${{ inputs.debug }}
 
       - name: Finalize
         if: success()
@@ -57,5 +63,5 @@ jobs:
         if: always()
         run: |
           echo "Open your Elastic APM app and search for the transaction name '${{
-            inputs.trace-name }}-${{ github.run_id }}' (service 'cli')."
+            inputs.trace-name }}-${{ github.run_number }}' (service 'cli')."
           echo "View the run here: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
