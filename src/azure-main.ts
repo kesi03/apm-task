@@ -7,6 +7,7 @@ async function run(): Promise<void> {
 
   const traceId = tl.getVariable('APM_TRACE_ID') || randomHex(16)
   const transactionId = tl.getVariable('APM_TRANSACTION_ID') || randomHex(8)
+  const traceName = tl.getInput('traceName', false) || 'azure-devops'
 
   await apm.sendSpan({
     traceId,
@@ -21,7 +22,7 @@ async function run(): Promise<void> {
   })
 
   await apm.sendLog({
-    message: 'CiApmTrace task executed',
+    message: `${traceName} task executed`,
     level: 'info',
     logger: 'ci-apm-trace',
     traceId,

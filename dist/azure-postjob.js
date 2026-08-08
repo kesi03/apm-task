@@ -80,7 +80,7 @@ async function run() {
         tags,
     });
     await apm_1.apm.sendLog({
-        message: failed ? `Azure Pipelines job failed: ${jobStatus}` : 'Azure Pipelines job completed',
+        message: failed ? `${(0, azure_common_1.pipelineName)()} pipeline has failed: ${jobStatus}` : `${(0, azure_common_1.pipelineName)()} pipeline has ended`,
         level: failed ? 'error' : 'info',
         logger: 'ci-apm-trace',
         dataset: 'azure-pipelines',

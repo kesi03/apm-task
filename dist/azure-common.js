@@ -38,6 +38,7 @@ exports.getEndpointConfig = getEndpointConfig;
 exports.initAzureApm = initAzureApm;
 exports.randomHex = randomHex;
 exports.getTraceId = getTraceId;
+exports.pipelineName = pipelineName;
 exports.pipelineTags = pipelineTags;
 exports.pipelineUser = pipelineUser;
 exports.pipelineCustom = pipelineCustom;
@@ -93,6 +94,9 @@ function randomHex(bytes) {
 }
 function getTraceId() {
     return tl.getVariable('APM_TRACE_ID') || randomHex(16);
+}
+function pipelineName() {
+    return tl.getVariable('Build.DefinitionName') || 'azure-pipelines';
 }
 function pipelineTags() {
     const tags = {};

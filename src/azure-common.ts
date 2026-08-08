@@ -62,6 +62,10 @@ export function getTraceId(): string {
   return tl.getVariable('APM_TRACE_ID') || randomHex(16)
 }
 
+export function pipelineName(): string {
+  return tl.getVariable('Build.DefinitionName') || 'azure-pipelines'
+}
+
 export function pipelineTags(): Record<string, string> {
   const tags: Record<string, string> = {}
   const add = (key: string, value: string | undefined): void => {

@@ -58,7 +58,7 @@ async function run() {
         tags: (0, azure_common_1.pipelineTags)(),
     });
     await apm_1.apm.sendLog({
-        message: 'Azure Pipelines job started',
+        message: `${(0, azure_common_1.pipelineName)()} pipeline has started`,
         level: 'info',
         logger: 'ci-apm-trace',
         traceId,

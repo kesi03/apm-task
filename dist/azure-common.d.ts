@@ -11,6 +11,7 @@ export declare function getEndpointConfig(): AzureEndpointConfig;
 export declare function initAzureApm(): ApmAgent;
 export declare function randomHex(bytes: number): string;
 export declare function getTraceId(): string;
+export declare function pipelineName(): string;
 export declare function pipelineTags(): Record<string, string>;
 export declare function pipelineUser(): {
     id?: string;

@@ -1,6 +1,6 @@
 import * as tl from 'azure-pipelines-task-lib'
 import { apm } from './apm'
-import { initAzureApm, pipelineCustom, pipelineTags, pipelineUser, randomHex } from './azure-common'
+import { initAzureApm, pipelineCustom, pipelineName, pipelineTags, pipelineUser, randomHex } from './azure-common'
 
 async function run(): Promise<void> {
   initAzureApm()
@@ -51,7 +51,7 @@ async function run(): Promise<void> {
   })
 
   await apm.sendLog({
-    message: failed ? `Azure Pipelines job failed: ${jobStatus}` : 'Azure Pipelines job completed',
+    message: failed ? `${pipelineName()} pipeline has failed: ${jobStatus}` : `${pipelineName()} pipeline has ended`,
     level: failed ? 'error' : 'info',
     logger: 'ci-apm-trace',
     dataset: 'azure-pipelines',

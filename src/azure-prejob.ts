@@ -1,6 +1,6 @@
 import * as tl from 'azure-pipelines-task-lib'
 import { apm } from './apm'
-import { initAzureApm, pipelineTags, randomHex } from './azure-common'
+import { initAzureApm, pipelineName, pipelineTags, randomHex } from './azure-common'
 
 async function run(): Promise<void> {
   initAzureApm()
@@ -28,7 +28,7 @@ async function run(): Promise<void> {
   })
 
   await apm.sendLog({
-    message: 'Azure Pipelines job started',
+    message: `${pipelineName()} pipeline has started`,
     level: 'info',
     logger: 'ci-apm-trace',
     traceId,

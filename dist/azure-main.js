@@ -40,6 +40,7 @@ async function run() {
     (0, azure_common_1.initAzureApm)();
     const traceId = tl.getVariable('APM_TRACE_ID') || (0, azure_common_1.randomHex)(16);
     const transactionId = tl.getVariable('APM_TRANSACTION_ID') || (0, azure_common_1.randomHex)(8);
+    const traceName = tl.getInput('traceName', false) || 'azure-devops';
     await apm_1.apm.sendSpan({
         traceId,
         spanId: (0, azure_common_1.randomHex)(8),
@@ -52,7 +53,7 @@ async function run() {
         tags: (0, azure_common_1.pipelineTags)(),
     });
     await apm_1.apm.sendLog({
-        message: 'CiApmTrace task executed',
+        message: `${traceName} task executed`,
         level: 'info',
         logger: 'ci-apm-trace',
         traceId,
