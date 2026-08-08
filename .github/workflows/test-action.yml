@@ -1,0 +1,61 @@
+name: Test GitHub Action
+
+on:
+  workflow_dispatch:
+    inputs:
+      trace-name:
+        description: 'Name of the trace to send (shown in APM)'
+        required: false
+        default: 'smoke-test'
+      fail:
+        description: 'End the trace as a failure (for testing)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  test-action:
+    name: Run the action
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check APM secrets
+        env:
+          APM_SERVER: ${{ secrets.ELASTIC_APM_SERVER_URL }}
+          APM_TOKEN: ${{ secrets.ELASTIC_APM_SECRET_TOKEN }}
+        run: |
+          if [ -z "$APM_SERVER" ]; then
+            echo "::error::The ELASTIC_APM_SERVER_URL secret is not set. Add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          if [ -z "$APM_TOKEN" ]; then
+            echo "::warning::The ELASTIC_APM_SECRET_TOKEN secret is not set; the trace will be sent without authentication."
+          fi
+
+      - name: Prepare
+        run: echo "Preparing the pipeline run (before the action step)..."
+
+      - name: Send pipeline trace to APM
+        uses: ./
+        with:
+          trace-name: ${{ inputs.trace-name }}
+          apm-server: ${{ secrets.ELASTIC_APM_SERVER_URL }}
+          apm-token: ${{ secrets.ELASTIC_APM_SECRET_TOKEN }}
+          fail: ${{ inputs.fail }}
+
+      - name: Finalize
+        if: success()
+        run: |
+          echo "Pipeline steps finished. The action's post phase ends the trace as success."
+          echo "If you set fail=true, this step is skipped and the job fails, but the post phase still runs."
+
+      - name: Where to look
+        if: always()
+        run: |
+          echo "Open your Elastic APM app and search for the transaction name '${{
+            inputs.trace-name }}-${{ github.run_id }}' (service 'cli')."
+          echo "View the run here: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
