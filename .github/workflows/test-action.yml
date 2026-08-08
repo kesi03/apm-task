@@ -30,7 +30,7 @@ jobs:
 
       - name: Check APM secrets
         env:
-          APM_SERVER: ${{ secrets.ELASTIC_APM_SERVER_URL }}
+          APM_SERVER: ${{ vars.ELASTIC_APM_SERVER_URL }}
           APM_TOKEN: ${{ secrets.ELASTIC_APM_SECRET_TOKEN }}
         run: |
           if [ -z "$APM_SERVER" ]; then
