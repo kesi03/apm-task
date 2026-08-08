@@ -13,15 +13,19 @@ export interface AzureEndpointConfig {
 }
 
 export function getEndpointConfig(): AzureEndpointConfig {
+  const endpointId = tl.getInput(ENDPOINT_INPUT, false)
   let serverUrl: string | undefined
   let secretToken: string | undefined
   try {
-    serverUrl = tl.getEndpointUrl(ENDPOINT_INPUT, false) ?? undefined
+    serverUrl = endpointId ? (tl.getEndpointUrl(endpointId, false) ?? undefined) : undefined
   } catch {
     // no connection bound in this run
   }
   try {
-    secretToken = tl.getEndpointAuthorizationParameter(ENDPOINT_INPUT, TOKEN_PARAM, false) ?? undefined
+    if (endpointId) {
+      const auth = tl.getEndpointAuthorization(endpointId, false)
+      secretToken = auth?.parameters?.[TOKEN_PARAM] ?? auth?.parameters?.apmSecretToken
+    }
   } catch {
     // APM Server may not require a token
   }

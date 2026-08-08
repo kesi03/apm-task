@@ -45,16 +45,20 @@ const apm_1 = require("./apm");
 exports.ENDPOINT_INPUT = 'apmConnection';
 exports.TOKEN_PARAM = 'apitoken';
 function getEndpointConfig() {
+    const endpointId = tl.getInput(exports.ENDPOINT_INPUT, false);
     let serverUrl;
     let secretToken;
     try {
-        serverUrl = tl.getEndpointUrl(exports.ENDPOINT_INPUT, false) ?? undefined;
+        serverUrl = endpointId ? (tl.getEndpointUrl(endpointId, false) ?? undefined) : undefined;
     }
     catch {
         // no connection bound in this run
     }
     try {
-        secretToken = tl.getEndpointAuthorizationParameter(exports.ENDPOINT_INPUT, exports.TOKEN_PARAM, false) ?? undefined;
+        if (endpointId) {
+            const auth = tl.getEndpointAuthorization(endpointId, false);
+            secretToken = auth?.parameters?.[exports.TOKEN_PARAM] ?? auth?.parameters?.apmSecretToken;
+        }
     }
     catch {
         // APM Server may not require a token
