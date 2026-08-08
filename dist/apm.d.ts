@@ -16,9 +16,8 @@ export interface Span {
 export type EventOutcome = 'success' | 'failure' | 'unknown';
 export interface SpanEventOptions {
     traceId: string;
-    transactionId?: string;
     spanId?: string;
-    parentId?: string;
+    parentId: string;
     name: string;
     type: string;
     startMs: number;
@@ -35,6 +34,7 @@ export interface TransactionEventOptions {
     durationMs: number;
     result: string;
     outcome: EventOutcome;
+    spanCount?: number;
     tags?: Record<string, string>;
 }
 export interface ErrorEventOptions {

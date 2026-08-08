@@ -11,19 +11,19 @@ async function run(): Promise<void> {
   const failed = fail || jobStatus === 'Failed' || jobStatus === 'Canceled'
 
   const traceId = tl.getVariable('APM_TRACE_ID') || randomHex(16)
+  const transactionId = tl.getVariable('APM_TRANSACTION_ID') || randomHex(8)
   const spanId = tl.getVariable('APM_SPAN_ID') || randomHex(8)
   const startMsRaw = tl.getVariable('APM_JOB_START_MS')
   const startMs = startMsRaw ? Number(startMsRaw) : Date.now()
   const durationMs = startMsRaw ? Math.max(0, Date.now() - startMs) : 0
   const tags = pipelineTags()
-  const buildId = tl.getVariable('Build.BuildId')
-  const transactionName = buildId ? `${traceName}-${buildId}` : traceName
+  const buildNumber = tl.getVariable('Build.BuildNumber')
+  const transactionName = buildNumber ? `${traceName}-${buildNumber}` : traceName
 
   await apm.sendSpan({
     traceId,
-    transactionId: traceId,
     spanId,
-    parentId: traceId,
+    parentId: transactionId,
     name: 'Job End',
     type: 'job',
     startMs,
@@ -33,7 +33,7 @@ async function run(): Promise<void> {
   })
 
   await apm.sendTransaction({
-    id: traceId,
+    id: transactionId,
     traceId,
     name: transactionName,
     type: 'pipeline',
@@ -41,6 +41,7 @@ async function run(): Promise<void> {
     durationMs,
     result: failed ? 'failure' : 'success',
     outcome: failed ? 'failure' : 'success',
+    spanCount: 3,
     tags,
   })
 

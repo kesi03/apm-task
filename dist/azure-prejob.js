@@ -39,15 +39,17 @@ const azure_common_1 = require("./azure-common");
 async function run() {
     (0, azure_common_1.initAzureApm)();
     const traceId = tl.getVariable('APM_TRACE_ID') || (0, azure_common_1.randomHex)(16);
+    const transactionId = (0, azure_common_1.randomHex)(8);
     const spanId = (0, azure_common_1.randomHex)(8);
     const startMs = Date.now();
     tl.setVariable('APM_TRACE_ID', traceId);
+    tl.setVariable('APM_TRANSACTION_ID', transactionId);
     tl.setVariable('APM_SPAN_ID', spanId);
     tl.setVariable('APM_JOB_START_MS', String(startMs));
     await apm_1.apm.sendSpan({
         traceId,
-        transactionId: traceId,
         spanId,
+        parentId: transactionId,
         name: 'Job Start',
         type: 'job',
         startMs,

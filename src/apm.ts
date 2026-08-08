@@ -24,9 +24,8 @@ export type EventOutcome = 'success' | 'failure' | 'unknown'
 
 export interface SpanEventOptions {
   traceId: string
-  transactionId?: string
   spanId?: string
-  parentId?: string
+  parentId: string
   name: string
   type: string
   startMs: number
@@ -44,6 +43,7 @@ export interface TransactionEventOptions {
   durationMs: number
   result: string
   outcome: EventOutcome
+  spanCount?: number
   tags?: Record<string, string>
 }
 
@@ -245,17 +245,12 @@ class ApmClient implements ApmAgent {
     const span: Record<string, unknown> = {
       id: event.spanId ?? randomId(),
       trace_id: event.traceId,
+      parent_id: event.parentId,
       name: event.name,
       type: event.type,
       timestamp: event.startMs * 1000,
       duration: roundMs(event.durationMs ?? 0),
       outcome: event.outcome ?? 'success',
-    }
-    if (event.transactionId) {
-      span.transaction_id = event.transactionId
-    }
-    if (event.parentId) {
-      span.parent_id = event.parentId
     }
     if (event.tags && Object.keys(event.tags).length > 0) {
       span.context = { tags: event.tags }
@@ -274,6 +269,7 @@ class ApmClient implements ApmAgent {
       timestamp: event.startMs * 1000,
       duration: roundMs(event.durationMs),
       sampled: true,
+      span_count: { started: event.spanCount ?? 0 },
     }
     if (event.tags && Object.keys(event.tags).length > 0) {
       transaction.context = { tags: event.tags }

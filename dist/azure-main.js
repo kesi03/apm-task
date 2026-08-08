@@ -39,10 +39,11 @@ const azure_common_1 = require("./azure-common");
 async function run() {
     (0, azure_common_1.initAzureApm)();
     const traceId = tl.getVariable('APM_TRACE_ID') || (0, azure_common_1.randomHex)(16);
+    const transactionId = tl.getVariable('APM_TRANSACTION_ID') || (0, azure_common_1.randomHex)(8);
     await apm_1.apm.sendSpan({
         traceId,
-        transactionId: traceId,
         spanId: (0, azure_common_1.randomHex)(8),
+        parentId: transactionId,
         name: 'Main Task Execution',
         type: 'task',
         startMs: Date.now(),

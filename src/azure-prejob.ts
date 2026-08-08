@@ -6,17 +6,19 @@ async function run(): Promise<void> {
   initAzureApm()
 
   const traceId = tl.getVariable('APM_TRACE_ID') || randomHex(16)
+  const transactionId = randomHex(8)
   const spanId = randomHex(8)
   const startMs = Date.now()
 
   tl.setVariable('APM_TRACE_ID', traceId)
+  tl.setVariable('APM_TRANSACTION_ID', transactionId)
   tl.setVariable('APM_SPAN_ID', spanId)
   tl.setVariable('APM_JOB_START_MS', String(startMs))
 
   await apm.sendSpan({
     traceId,
-    transactionId: traceId,
     spanId,
+    parentId: transactionId,
     name: 'Job Start',
     type: 'job',
     startMs,
