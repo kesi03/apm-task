@@ -52,7 +52,7 @@ jobs:
         uses: ./
         with:
           trace-name: ${{ inputs.trace-name }}
-          apm-server: ${{ secrets.ELASTIC_APM_SERVER_URL }}
+          apm-server: ${{ vars.ELASTIC_APM_SERVER_URL }}
           apm-token: ${{ secrets.ELASTIC_APM_SECRET_TOKEN }}
           fail: ${{ inputs.fail }}
           debug: ${{ inputs.debug }}
