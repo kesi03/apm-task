@@ -2,7 +2,15 @@
 
 Sends **CI pipeline traces to [Elastic APM](https://www.elastic.co/apm)** from your Azure Pipelines.
 
-Every pipeline run records an APM transaction (named from the `traceName` input, with the build ID appended) carrying CI metadata labels, then ends the trace as **success** or **failure** — including the build that runs it.
+The `CiApmTrace@1` task opens a **Job Start** span before the job (`PreJob` handler), records a **Main Task Execution** span, and closes the **Job End** span afterwards while sending the wrapping pipeline transaction — named from the `traceName` input with the build ID appended — plus **errors** when the job fails and **metrics** (`ci.job.duration.ms`, `ci.job.success`) on every run.
+
+## Set up
+
+1. Install the extension into your organization.
+2. Create the connection: **Project settings > Pipelines > Service connections > New service connection > Elastic APM**.
+   - **APM Server URL** — e.g. `https://apm.example.com:8200`
+   - **APM Secret Token** — the token configured on the APM Server (leave blank if unauthenticated)
+3. Add the task to a job and select the connection in the `apmConnection` input.
 
 ## Quick start
 
@@ -19,29 +27,24 @@ steps:
   - task: CiApmTrace@1
     displayName: 'Send pipeline trace to APM'
     inputs:
+      apmConnection: 'Elastic APM'
       traceName: 'azure-pipeline'
-      apmServer: $(ELASTIC_APM_SERVER_URL)
-      apmToken: $(ELASTIC_APM_SECRET_TOKEN)
 ```
-
-The `apmServer` and `apmToken` inputs take the values from your secret pipeline variables. Alternatively, set the variables below and omit the inputs — they are picked up automatically from the environment:
-
-| Variable | Description |
-| --- | --- |
-| `ELASTIC_APM_SERVER_URL` | APM Server URL, e.g. `https://apm.example.com` |
-| `ELASTIC_APM_SECRET_TOKEN` | APM Server secret token |
-
-The variables are picked up automatically from the environment; no extra wiring is needed beyond marking the token as secret. The `apmServer` and `apmToken` inputs take precedence over the environment variables when both are set.
 
 ## Inputs
 
 | Name | Type | Default | Description |
 | --- | --- | --- | --- |
+| `apmConnection` | connectedService:apm | — | The Elastic APM service connection (required) |
 | `traceName` | string | `azure-devops` | Name of the pipeline trace |
 | `fail` | boolean | `false` | Force the trace to end as a failure (for testing) |
 | `debug` | boolean | `false` | Show the APM server response body in the build log |
-| `apmServer` | string | — | Elastic APM server URL. Overrides the `ELASTIC_APM_SERVER_URL` environment variable |
-| `apmToken` | string | — | Elastic APM secret token. Overrides the `ELASTIC_APM_SECRET_TOKEN` environment variable |
+
+> **Migrating from v1.0.x:** the `apmServer` and `apmToken` inputs were replaced by the `apmConnection` service connection. Update existing pipelines to select the connection instead of passing those inputs.
+
+## Pipeline decorator
+
+The extension also installs a pipeline decorator that generates a per-job `APM_TRACE_ID` and prints `Elastic APM: Pipeline start/end` markers in **every job** of the organization. The task reuses the trace ID when present; if the decorator is not installed the `PreJob` handler generates one.
 
 ## Automatically captured metadata
 
@@ -61,7 +64,7 @@ The variables are picked up automatically from the environment; no extra wiring 
 | Result | Meaning |
 | --- | --- |
 | Succeeded | Trace ended successfully (exit 0) |
-| Failed | Trace ended as a failure (`fail: true` or an error occurred) |
+| Succeeded with issues | Trace ended as a failure (`fail: true` or an error occurred) |
 
 ## Source & feedback
 

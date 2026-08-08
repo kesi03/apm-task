@@ -4,7 +4,7 @@
   "friendlyName": "CI APM Trace",
   "description": "Sends CI pipeline traces to Elastic APM",
   "author": "kester.simm.mockholm@outlook.com",
-  "helpMarkDown": "Sends CI pipeline traces to Elastic APM. Requires the ELASTIC_APM_SERVER_URL and ELASTIC_APM_SECRET_TOKEN environment variables to be set on the pipeline.",
+  "helpMarkDown": "Sends CI pipeline traces to Elastic APM. Requires an Elastic APM service connection. The PreJob handler opens a job span, the main step records a custom span, and the PostJob handler ends the span, sends the trace, and records errors and metrics when the job fails.",
   "category": "Utility",
   "visibility": [
     "Build",
@@ -13,12 +13,19 @@
   "demands": [],
   "version": {
     "Major": 1,
-    "Minor": 0,
-    "Patch": 6
+    "Minor": 1,
+    "Patch": 0
   },
-  "minimumAgentVersion": "2.235.0",
+  "minimumAgentVersion": "2.238.1",
   "instanceNameFormat": "CI APM Trace",
   "inputs": [
+    {
+      "name": "apmConnection",
+      "type": "connectedService:apm",
+      "label": "Elastic APM connection",
+      "required": true,
+      "helpMarkDown": "The Elastic APM service connection to use. Create one under Project settings > Pipelines > Service connections using the 'Elastic APM' type."
+    },
     {
       "name": "traceName",
       "type": "string",
@@ -42,30 +49,22 @@
       "defaultValue": false,
       "required": false,
       "helpMarkDown": "Show the APM server response body in the build log"
-    },
-    {
-      "name": "apmServer",
-      "type": "string",
-      "label": "APM server URL",
-      "required": false,
-      "helpMarkDown": "Elastic APM server URL. Overrides the ELASTIC_APM_SERVER_URL environment variable."
-    },
-    {
-      "name": "apmToken",
-      "type": "string",
-      "label": "APM secret token",
-      "required": false,
-      "helpMarkDown": "Elastic APM secret token. Overrides the ELASTIC_APM_SECRET_TOKEN environment variable."
     }
   ],
   "execution": {
     "Node20_1": {
       "target": "dist/azure-main.js"
     },
+    "PreJob": {
+      "Node20_1": {
+        "target": "dist/azure-prejob.js"
+      }
+    },
     "PostJob": {
       "Node20_1": {
         "target": "dist/azure-postjob.js"
       }
     }
-  }
+  },
+  "icon": "icons/icon.png"
 }

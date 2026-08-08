@@ -7,7 +7,7 @@ Sends CI pipeline traces to **Elastic APM**. The same core lifecycle logic power
 - **Azure DevOps Task** wrapper
 - **Docker** container
 
-Every mode records a pipeline transaction with step spans and CI metadata labels, then ends the trace as success or failure.
+Every mode records a pipeline transaction with step spans and CI metadata labels, then ends the trace as success or failure. The Azure DevOps task additionally splits each job into `Job Start` / custom / `Job End` spans across its `PreJob`/main/`PostJob` handlers (see the [Azure DevOps](#azure-devops) section).
 
 ## How it works
 
@@ -188,9 +188,30 @@ task publish:github VERSION=1.0.1
 
 ## Azure DevOps
 
-`task.json` defines the inputs `traceName` (default `azure-devops`), `fail` (default `false`), `debug` (default `false`), `apmServer`, and `apmToken`. The wrapper reads `Build.BuildId`, `Build.BuildNumber`, `Build.SourceBranchName`, `Build.SourceVersion`, `Build.Repository.Name`, `Agent.OS`, and `Agent.OSArchitecture` automatically. The `apmServer` and `apmToken` inputs override the `ELASTIC_APM_SERVER_URL` / `ELASTIC_APM_SECRET_TOKEN` environment variables.
+The Azure DevOps task is an extension (`vss-extension.json`) that ships three pieces:
 
-Example pipeline:
+- **`CiApmTrace@1` task** — a service-connection-backed task with `PreJob`, main, and `PostJob` handlers
+- **`apm` service connection type** — a "New service connection" entry named *Elastic APM* that stores the APM Server URL and secret token
+- **pipeline decorator** (`decorators/apm-decorator.yml`) — generates a per-job `APM_TRACE_ID` and prints start/end markers in every job once the extension is installed
+
+### What the task sends
+
+1. **PreJob handler** (`dist/azure-prejob.js`) opens a `Job Start` span, generates a trace ID (or reuses the decorator's `APM_TRACE_ID`), and persists `APM_TRACE_ID`, `APM_SPAN_ID`, and `APM_JOB_START_MS` for the rest of the job.
+2. **Main handler** (`dist/azure-main.js`) records a `Main Task Execution` span under the same trace.
+3. **PostJob handler** (`dist/azure-postjob.js`) closes the `Job End` span, sends the wrapping pipeline **transaction** (named from `traceName`, with the build ID appended), and records an **error** when the job failed and **metrics** (`ci.job.duration.ms`, `ci.job.success`) on every run.
+
+All events are POSTed to `{server}/intake/v2/events` as NDJSON with `Authorization: Bearer <token>`.
+
+The task reads `Build.BuildId`, `Build.BuildNumber`, `Build.SourceBranchName`, `Build.SourceVersion`, `Build.Repository.Name`, `Agent.OS`, and `Agent.OSArchitecture` and attaches them as tags (`build_id`, `build_number`, `branch`, `commit`, `repo`, `ci_provider`, `runner_os`, `runner_arch`).
+
+### 1. Create the service connection
+
+Once the extension is installed, in your project go to **Project settings > Pipelines > Service connections > New service connection** and pick **Elastic APM**:
+
+- **APM Server URL** — e.g. `https://apm.example.com:8200`
+- **APM Secret Token** — the token configured on the APM Server (leave blank if unauthenticated)
+
+### 2. Add the task to your pipeline
 
 ```yaml
 trigger:
@@ -205,13 +226,26 @@ steps:
   - task: CiApmTrace@1
     displayName: 'Send pipeline trace to APM'
     inputs:
+      apmConnection: 'Elastic APM'
       traceName: 'azure-pipeline'
       fail: false
-      apmServer: $(ELASTIC_APM_SERVER_URL)
-      apmToken: $(ELASTIC_APM_SECRET_TOKEN)
+      debug: false
 ```
 
-Set the `ELASTIC_APM_SERVER_URL` and `ELASTIC_APM_SECRET_TOKEN` as pipeline variables (mark the token as secret), or pass them directly via the `apmServer` and `apmToken` inputs. To distribute the task as an extension, publish `task.json` and the compiled `dist/` via `tfx`/`vsce` with a `vss-extension.json` manifest.
+Inputs:
+
+| Name | Type | Default | Description |
+| --- | --- | --- | --- |
+| `apmConnection` | connectedService:apm | — | The Elastic APM service connection (required) |
+| `traceName` | string | `azure-devops` | Name of the pipeline trace |
+| `fail` | boolean | `false` | Force the trace to end as a failure (for testing) |
+| `debug` | boolean | `false` | Show the APM server response body in the build log |
+
+> **Migrating from v1.0.x:** the `apmServer` and `apmToken` inputs were replaced by the `apmConnection` service connection. Update existing pipelines to select the connection instead of passing those inputs.
+
+### About the decorator
+
+The pipeline decorator injects two `bash` steps (a trace-ID generator before the job and an end marker after it) into **every job of every pipeline** in the organization where the extension is installed. To avoid the extra steps, remove the decorator contribution (`apm-trace-decorator`) from `vss-extension.json` and republish — the task itself generates a trace ID when none is present.
 
 ## Publishing to the Azure DevOps Marketplace
 
@@ -220,6 +254,7 @@ The task is distributed as an **Azure DevOps extension** (a `.vsix` file). The r
 ```
 vss-extension.json       # extension manifest (edit your publisher id)
 CiApmTrace/              # task folder, generated at package time (gitignored)
+decorators/              # pipeline decorator template (apm-decorator.yml)
 icons/                   # Marketplace icons (generated via `npm run icons`)
 overview.md              # Marketplace details page
 scripts/package-azure.js # packaging script

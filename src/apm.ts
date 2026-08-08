@@ -20,11 +20,58 @@ export interface Span {
   end(): void
 }
 
+export type EventOutcome = 'success' | 'failure' | 'unknown'
+
+export interface SpanEventOptions {
+  traceId: string
+  transactionId?: string
+  spanId?: string
+  parentId?: string
+  name: string
+  type: string
+  startMs: number
+  durationMs?: number
+  outcome?: EventOutcome
+  tags?: Record<string, string>
+}
+
+export interface TransactionEventOptions {
+  id: string
+  traceId: string
+  name: string
+  type: string
+  startMs: number
+  durationMs: number
+  result: string
+  outcome: EventOutcome
+  tags?: Record<string, string>
+}
+
+export interface ErrorEventOptions {
+  traceId: string
+  transactionId?: string
+  timestampMs?: number
+  message: string
+  type?: string
+  stack?: string
+  tags?: Record<string, string>
+}
+
+export interface MetricEventOptions {
+  timestampMs?: number
+  samples: Record<string, number>
+  tags?: Record<string, string>
+}
+
 export interface ApmAgent {
   startTransaction(name: string, type: string): Transaction
   startSpan(name: string, type: string): Span | null
   captureError(error: Error): void
   flush(): Promise<void>
+  sendSpan(event: SpanEventOptions): Promise<void>
+  sendTransaction(event: TransactionEventOptions): Promise<void>
+  sendError(event: ErrorEventOptions): Promise<void>
+  sendMetric(event: MetricEventOptions): Promise<void>
 }
 
 interface PendingSpan {
@@ -191,6 +238,94 @@ class ApmClient implements ApmAgent {
     if (pending.length === 0) {
       return
     }
+    await this.post(this.serialize(pending))
+  }
+
+  async sendSpan(event: SpanEventOptions): Promise<void> {
+    const span: Record<string, unknown> = {
+      id: event.spanId ?? randomId(),
+      trace_id: event.traceId,
+      name: event.name,
+      type: event.type,
+      timestamp: event.startMs * 1000,
+      duration: roundMs(event.durationMs ?? 0),
+      outcome: event.outcome ?? 'success',
+    }
+    if (event.transactionId) {
+      span.transaction_id = event.transactionId
+    }
+    if (event.parentId) {
+      span.parent_id = event.parentId
+    }
+    if (event.tags && Object.keys(event.tags).length > 0) {
+      span.context = { tags: event.tags }
+    }
+    await this.post(`${this.metadataLine()}\n${JSON.stringify({ span })}\n`)
+  }
+
+  async sendTransaction(event: TransactionEventOptions): Promise<void> {
+    const transaction: Record<string, unknown> = {
+      id: event.id,
+      trace_id: event.traceId,
+      name: event.name,
+      type: event.type,
+      result: event.result,
+      outcome: event.outcome,
+      timestamp: event.startMs * 1000,
+      duration: roundMs(event.durationMs),
+      sampled: true,
+    }
+    if (event.tags && Object.keys(event.tags).length > 0) {
+      transaction.context = { tags: event.tags }
+    }
+    await this.post(`${this.metadataLine()}\n${JSON.stringify({ transaction })}\n`)
+  }
+
+  async sendError(event: ErrorEventOptions): Promise<void> {
+    const exception: Record<string, unknown> = {
+      message: event.message,
+      type: event.type ?? 'Error',
+    }
+    if (event.stack) {
+      const frames = parseStack(event.stack)
+      if (frames.length > 0) {
+        exception.stacktrace = frames
+      }
+    }
+    const error: Record<string, unknown> = {
+      id: randomBytes(16).toString('hex'),
+      trace_id: event.traceId,
+      timestamp: (event.timestampMs ?? Date.now()) * 1000,
+      exception,
+    }
+    if (event.transactionId) {
+      error.transaction_id = event.transactionId
+    }
+    if (event.tags && Object.keys(event.tags).length > 0) {
+      error.context = { tags: event.tags }
+    }
+    await this.post(`${this.metadataLine()}\n${JSON.stringify({ error })}\n`)
+  }
+
+  async sendMetric(event: MetricEventOptions): Promise<void> {
+    const samples: Record<string, { value: number }> = {}
+    for (const [name, value] of Object.entries(event.samples)) {
+      samples[name] = { value }
+    }
+    const metricset: Record<string, unknown> = {
+      samples,
+      timestamp: (event.timestampMs ?? Date.now()) * 1000,
+    }
+    if (event.tags && Object.keys(event.tags).length > 0) {
+      metricset.tags = event.tags
+    }
+    await this.post(`${this.metadataLine()}\n${JSON.stringify({ metricset })}\n`)
+  }
+
+  private async post(payload: string): Promise<void> {
+    if (!this.serverUrl) {
+      return
+    }
     const url = `${this.serverUrl.replace(/\/+$/, '')}/intake/v2/events`
     const headers: Record<string, string> = {
       'Content-Type': 'application/x-ndjson',
@@ -202,7 +337,7 @@ class ApmClient implements ApmAgent {
       headers['Authorization'] = `Bearer ${this.secretToken}`
     }
     try {
-      const response = await axios.post(url, this.serialize(pending), { headers, timeout: 10000 })
+      const response = await axios.post(url, payload, { headers, timeout: 10000 })
       if (this.debug) {
         this.logServerResponse(response.status, response.data)
       }
@@ -215,6 +350,21 @@ class ApmClient implements ApmAgent {
     }
   }
 
+  private metadataLine(): string {
+    return JSON.stringify({
+      metadata: {
+        service: {
+          name: this.serviceName,
+          environment: 'ci',
+          agent: {
+            name: 'ci-apm-trace',
+            version: pkg.version,
+          },
+        },
+      },
+    })
+  }
+
   private logServerResponse(status: number | undefined, data: unknown): void {
     if (status === undefined) {
       return
@@ -224,20 +374,7 @@ class ApmClient implements ApmAgent {
   }
 
   private serialize(transactions: PendingTransaction[]): string {
-    const lines: string[] = [
-      JSON.stringify({
-        metadata: {
-          service: {
-            name: this.serviceName,
-            environment: 'ci',
-            agent: {
-              name: 'ci-apm-trace',
-              version: pkg.version,
-            },
-          },
-        },
-      }),
-    ]
+    const lines: string[] = [this.metadataLine()]
     for (const t of transactions) {
       for (const span of t.spans) {
         lines.push(
@@ -312,4 +449,8 @@ export const apm: ApmAgent = {
   startSpan: (name, type) => current.startSpan(name, type),
   captureError: (error) => current.captureError(error),
   flush: () => current.flush(),
+  sendSpan: (event) => current.sendSpan(event),
+  sendTransaction: (event) => current.sendTransaction(event),
+  sendError: (event) => current.sendError(event),
+  sendMetric: (event) => current.sendMetric(event),
 }

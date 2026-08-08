@@ -121,6 +121,89 @@ class ApmClient {
         if (pending.length === 0) {
             return;
         }
+        await this.post(this.serialize(pending));
+    }
+    async sendSpan(event) {
+        const span = {
+            id: event.spanId ?? randomId(),
+            trace_id: event.traceId,
+            name: event.name,
+            type: event.type,
+            timestamp: event.startMs * 1000,
+            duration: roundMs(event.durationMs ?? 0),
+            outcome: event.outcome ?? 'success',
+        };
+        if (event.transactionId) {
+            span.transaction_id = event.transactionId;
+        }
+        if (event.parentId) {
+            span.parent_id = event.parentId;
+        }
+        if (event.tags && Object.keys(event.tags).length > 0) {
+            span.context = { tags: event.tags };
+        }
+        await this.post(`${this.metadataLine()}\n${JSON.stringify({ span })}\n`);
+    }
+    async sendTransaction(event) {
+        const transaction = {
+            id: event.id,
+            trace_id: event.traceId,
+            name: event.name,
+            type: event.type,
+            result: event.result,
+            outcome: event.outcome,
+            timestamp: event.startMs * 1000,
+            duration: roundMs(event.durationMs),
+            sampled: true,
+        };
+        if (event.tags && Object.keys(event.tags).length > 0) {
+            transaction.context = { tags: event.tags };
+        }
+        await this.post(`${this.metadataLine()}\n${JSON.stringify({ transaction })}\n`);
+    }
+    async sendError(event) {
+        const exception = {
+            message: event.message,
+            type: event.type ?? 'Error',
+        };
+        if (event.stack) {
+            const frames = parseStack(event.stack);
+            if (frames.length > 0) {
+                exception.stacktrace = frames;
+            }
+        }
+        const error = {
+            id: (0, crypto_1.randomBytes)(16).toString('hex'),
+            trace_id: event.traceId,
+            timestamp: (event.timestampMs ?? Date.now()) * 1000,
+            exception,
+        };
+        if (event.transactionId) {
+            error.transaction_id = event.transactionId;
+        }
+        if (event.tags && Object.keys(event.tags).length > 0) {
+            error.context = { tags: event.tags };
+        }
+        await this.post(`${this.metadataLine()}\n${JSON.stringify({ error })}\n`);
+    }
+    async sendMetric(event) {
+        const samples = {};
+        for (const [name, value] of Object.entries(event.samples)) {
+            samples[name] = { value };
+        }
+        const metricset = {
+            samples,
+            timestamp: (event.timestampMs ?? Date.now()) * 1000,
+        };
+        if (event.tags && Object.keys(event.tags).length > 0) {
+            metricset.tags = event.tags;
+        }
+        await this.post(`${this.metadataLine()}\n${JSON.stringify({ metricset })}\n`);
+    }
+    async post(payload) {
+        if (!this.serverUrl) {
+            return;
+        }
         const url = `${this.serverUrl.replace(/\/+$/, '')}/intake/v2/events`;
         const headers = {
             'Content-Type': 'application/x-ndjson',
@@ -133,7 +216,7 @@ class ApmClient {
             headers['Authorization'] = `Bearer ${this.secretToken}`;
         }
         try {
-            const response = await axios_1.default.post(url, this.serialize(pending), { headers, timeout: 10000 });
+            const response = await axios_1.default.post(url, payload, { headers, timeout: 10000 });
             if (this.debug) {
                 this.logServerResponse(response.status, response.data);
             }
@@ -146,6 +229,20 @@ class ApmClient {
             }
         }
     }
+    metadataLine() {
+        return JSON.stringify({
+            metadata: {
+                service: {
+                    name: this.serviceName,
+                    environment: 'ci',
+                    agent: {
+                        name: 'ci-apm-trace',
+                        version: package_json_1.default.version,
+                    },
+                },
+            },
+        });
+    }
     logServerResponse(status, data) {
         if (status === undefined) {
             return;
@@ -154,20 +251,7 @@ class ApmClient {
         console.log(`ci-apm-trace: APM server responded with status ${status}${body}`);
     }
     serialize(transactions) {
-        const lines = [
-            JSON.stringify({
-                metadata: {
-                    service: {
-                        name: this.serviceName,
-                        environment: 'ci',
-                        agent: {
-                            name: 'ci-apm-trace',
-                            version: package_json_1.default.version,
-                        },
-                    },
-                },
-            }),
-        ];
+        const lines = [this.metadataLine()];
         for (const t of transactions) {
             for (const span of t.spans) {
                 lines.push(JSON.stringify({
@@ -232,5 +316,9 @@ exports.apm = {
     startSpan: (name, type) => current.startSpan(name, type),
     captureError: (error) => current.captureError(error),
     flush: () => current.flush(),
+    sendSpan: (event) => current.sendSpan(event),
+    sendTransaction: (event) => current.sendTransaction(event),
+    sendError: (event) => current.sendError(event),
+    sendMetric: (event) => current.sendMetric(event),
 };
 //# sourceMappingURL=apm.js.map

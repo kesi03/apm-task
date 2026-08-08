@@ -38,6 +38,10 @@ fs.copyFileSync(path.join(root, 'task.json'), path.join(taskDir, 'task.json'))
 console.log('[2/5] copying compiled dist/')
 fs.cpSync(path.join(root, 'dist'), path.join(taskDir, 'dist'), { recursive: true })
 
+console.log('[2.5/5] copying task icon')
+fs.mkdirSync(path.join(taskDir, 'icons'), { recursive: true })
+fs.copyFileSync(path.join(root, 'icons', '48.png'), path.join(taskDir, 'icons', 'icon.png'))
+
 console.log('[3/5] installing production dependencies into task folder')
 fs.copyFileSync(path.join(root, 'package.json'), path.join(taskDir, 'package.json'))
 fs.copyFileSync(path.join(root, 'package-lock.json'), path.join(taskDir, 'package-lock.json'))

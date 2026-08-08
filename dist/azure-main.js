@@ -34,5 +34,24 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 const tl = __importStar(require("azure-pipelines-task-lib"));
-tl.setResult(tl.TaskResult.Succeeded, 'CI APM trace will be sent when the job finishes');
+const apm_1 = require("./apm");
+const azure_common_1 = require("./azure-common");
+async function run() {
+    (0, azure_common_1.initAzureApm)();
+    const traceId = tl.getVariable('APM_TRACE_ID') || (0, azure_common_1.randomHex)(16);
+    await apm_1.apm.sendSpan({
+        traceId,
+        transactionId: traceId,
+        spanId: (0, azure_common_1.randomHex)(8),
+        name: 'Main Task Execution',
+        type: 'task',
+        startMs: Date.now(),
+        tags: (0, azure_common_1.pipelineTags)(),
+    });
+    tl.setResult(tl.TaskResult.Succeeded, 'Elastic APM: custom span sent');
+}
+run().catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    tl.setResult(tl.TaskResult.SucceededWithIssues, `Elastic APM custom span failed: ${message}`);
+});
 //# sourceMappingURL=azure-main.js.map
