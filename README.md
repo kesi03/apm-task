@@ -7,7 +7,7 @@ Sends CI pipeline traces to **Elastic APM**. The same core lifecycle logic power
 - **Azure DevOps Task** wrapper
 - **Docker** container
 
-Every mode records a pipeline transaction with step spans and CI metadata labels, then ends the trace as success or failure. The Azure DevOps task additionally splits each job into `Job Start` / custom / `Job End` spans across its `PreJob`/main/`PostJob` handlers (see the [Azure DevOps](#azure-devops) section).
+Every mode records a pipeline transaction with step spans and CI metadata labels, then ends the trace as success or failure. The Azure DevOps task additionally splits each job into `Job Start` / custom / `Job End` spans across its `PreJob`/main/`PostJob` handlers (see the [Azure DevOps](#azure-devops) section), and the CLI mirrors that split with `pre`/`main`/`post` subcommands (see [CLI usage](#cli-usage)).
 
 ## How it works
 
@@ -45,34 +45,98 @@ The compiled output lands in `dist/`.
 
 ## Configuration
 
-The APM client reads these environment variables:
+The CLI reads the following environment variables. All are optional — without
+`ELASTIC_APM_SERVER_URL` the client stays inactive and nothing is sent.
+
+### APM Server connection
 
 | Variable | Description | Default |
 | --- | --- | --- |
 | `ELASTIC_APM_SERVER_URL` | APM Server URL, e.g. `https://apm.example.com` | unset (client inactive) |
 | `ELASTIC_APM_SECRET_TOKEN` | APM Server secret token | unset |
 | `ELASTIC_APM_API_KEY` | APM Server API key (overrides the secret token) | unset |
-| `ELASTIC_APM_SERVICE_NAME` | Service name shown in APM | `ci-apm-trace` |
+| `ELASTIC_APM_SERVICE_NAME` | Service name shown in APM | `cli` |
 | `ELASTIC_APM_DEBUG` | Print the APM server response body (`true`/`1`) | `false` |
 
-The service environment is always set to `ci`.
+The service environment is always set to `ci`. The Azure task defaults the
+service name to `azure-devops`; the service version defaults to the build
+number (`BUILD_NUMBER` / `Build.BuildNumber`).
+
+### Trace state (handed between `pre`, `main`, and `post`)
+
+| Variable | Set by | Read by | Purpose |
+| --- | --- | --- | --- |
+| `APM_TRACE_ID` | `pre` | `main`, `post` | Trace ID |
+| `APM_TRANSACTION_ID` | `pre` | `main`, `post` | Pipeline transaction ID |
+| `APM_SPAN_ID` | `pre` | `post` | Job End span ID |
+| `APM_JOB_START_MS` | `pre` | `post` | Job start time (epoch ms); `post` derives the duration from it |
+
+### Optional CI metadata
+
+The following variables enrich the trace with labels (`build_id`, `branch`,
+`commit`, ...), `ci.*`/`vcs.*` tags, the APM user, and custom fields. The Azure
+task sets the `Build.*`/`Agent.*` equivalents automatically; the CLI and GitHub
+wrapper read the `GITHUB_*` / `RUNNER_*` / `BUILD_*` variants instead.
+
+| Variable | Used for | Notes / fallback |
+| --- | --- | --- |
+| `CI_PROVIDER` | `ci_provider` label and span subtype | `cli` |
+| `BUILD_DEFINITION_NAME`, `CI_PIPELINE_NAME` | `definition_name`, `ci.pipeline.name`, log messages | `ci-pipeline` |
+| `BUILD_ID` | `build_id`, `ci.pipeline.id`, `ci.pipeline.run.id` | — |
+| `BUILD_NUMBER` | `build_number`, `ci.pipeline.run.number`, service version | — |
+| `BUILD_BRANCH` | `branch`, `ci.build.ref` | — |
+| `BUILD_COMMIT` | `commit`, `ci.build.commit`, `vcs.commit.id` | — |
+| `BUILD_REPO` | `repo`, `ci.build.repo` | — |
+| `BUILD_REPO_URI` | `vcs.repository.url`, custom `repo_uri` | — |
+| `BUILD_REF` | `vcs.ref.head.name` | falls back to `BUILD_BRANCH` |
+| `BUILD_URL` | `ci.pipeline.run.url`, custom `build_url` | — |
+| `BUILD_DEFINITION_ID` | custom `definition_id` | — |
+| `JOB_STATUS` | `ci.job.status`, `ci.pipeline.run.result` | `post` treats `Failed`/`Canceled` as a failure; else `Succeeded` |
+| `JOB_ID` | `ci.job.id`, custom `job_id` | — |
+| `JOB_NAME` | `ci.job.name`, custom `job_name` | — |
+| `RUNNER_OS` | `runner_os` | — |
+| `RUNNER_ARCH` | `runner_arch` | — |
+| `AGENT_NAME`, `RUNNER_NAME` | `ci.pipeline.agent.name`, custom `agent_name`, service node | hostname |
+| `AGENT_VERSION` | custom `agent_version` | — |
+| `GITHUB_ACTOR`, `BUILD_REQUESTED_FOR` | `ci.pipeline.run.user`, user `username`, custom `requested_for` | — |
+| `GITHUB_ACTOR_ID`, `BUILD_REQUESTED_FOR_ID` | user `id` | — |
+| `GITHUB_ACTOR_EMAIL`, `BUILD_REQUESTED_FOR_EMAIL` | user `email` | — |
 
 ## CLI usage
 
+The CLI is a yargs command client with two modes: a **one-shot** mode for
+tracing a single run, and a `pre`/`main`/`post` mode for splitting a trace
+across several pipeline steps (the CLI equivalent of the Azure task's
+PreJob/main/PostJob handlers).
+
 ```
-Usage: ci-apm-trace [options]
+ci-apm-trace [command]
+
+Commands:
+  ci-apm-trace pre   Start the trace: generate IDs and emit APM_* environment
+                     variables for main/post
+  ci-apm-trace main  Record the main task execution span under the running trace
+  ci-apm-trace post  End the trace: transaction, error, and metrics for the
+                     completed pipeline
 
 Options:
-  --trace-name      Name of the pipeline trace           [string] [default: "ci-pipeline"]
-  --build-id        CI build/pipeline ID                 [string]
-  --build-number    CI build number                      [string]
-  --branch          Git branch                           [string]
-  --commit          Git commit SHA                       [string]
-  --repo            Repository name                      [string]
-  --ci-provider     CI provider name                     [string]
-  --fail            Simulate a pipeline failure          [boolean] [default: false]
-  --debug           Show the APM server response         [boolean] [default: false]
+  --trace-name    Name of the pipeline trace   [string] [default: "ci-pipeline"]
+  --build-id      CI build/pipeline ID                                  [string]
+  --build-number  CI build number                                       [string]
+  --branch        Git branch                                            [string]
+  --commit        Git commit SHA                                        [string]
+  --repo          Repository name                                       [string]
+  --ci-provider   CI provider name                                      [string]
+  --fail          Simulate a pipeline failure         [boolean] [default: false]
+  --debug         Show the APM server response in the output
+                                                      [boolean] [default: false]
+  --help          Show help                                            [boolean]
 ```
+
+### One-shot mode
+
+Runs the whole trace (start → step → end) in a single process. Use this when
+you only need to trace one pipeline step or a job's main command.
 
 Success (exit code 0):
 
@@ -101,6 +165,41 @@ Run without installing globally:
 ```bash
 node dist/cli.js --trace-name my-pipeline --build-id 1
 ```
+
+### pre/main/post mode
+
+For multi-step pipelines, split the trace across commands. `pre` generates the
+trace IDs and prints `export APM_*` lines for the shell to source; `main` and
+`post` read them back from the environment:
+
+```bash
+# Step 1: start the trace (capture and persist the IDs)
+eval "$(node dist/cli.js pre --trace-name release)"
+
+# Step 2: after the pipeline work, record the "Main Task Execution" span
+node dist/cli.js main --trace-name release
+
+# Step 3: end the trace (transaction, metrics, and error on failure)
+node dist/cli.js post --trace-name release
+node dist/cli.js post --trace-name release --fail   # exits 1
+```
+
+In CI, persist the four `APM_*` variables produced by `pre` across the steps
+(GitHub Actions `$GITHUB_ENV`, Azure pipeline variables, etc.) instead of
+`eval`. The `pre`/`main`/`post` subcommands accept `--debug`, and `post`
+accepts `--fail`:
+
+| Command | Options |
+| --- | --- |
+| `pre` | `--trace-name` (default `ci-pipeline`), `--debug` |
+| `main` | `--trace-name` (default `ci-pipeline`), `--debug` |
+| `post` | `--trace-name` (default `ci-pipeline`), `--fail`, `--debug` |
+
+`post` also honors `JOB_STATUS=Failed|Canceled` to end the trace as a failure
+and `BUILD_NUMBER` to append to the transaction name. See
+[Trace state](#trace-state-handed-between-pre-main-and-post) for the variables
+passed between commands and [Configuration](#configuration) for the connection
+and CI metadata variables.
 
 ## GitHub Action
 

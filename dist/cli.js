@@ -476,6 +476,340 @@ exports.apm = {
 
 /***/ }),
 
+/***/ 6645:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getEnvConfig = getEnvConfig;
+exports.initCliApm = initCliApm;
+exports.randomHex = randomHex;
+exports.providerName = providerName;
+exports.pipelineName = pipelineName;
+exports.pipelineTags = pipelineTags;
+exports.pipelineUser = pipelineUser;
+exports.pipelineCustom = pipelineCustom;
+const crypto_1 = __nccwpck_require__(6982);
+const os = __importStar(__nccwpck_require__(857));
+const apm_1 = __nccwpck_require__(5021);
+function isTruthy(value) {
+    const v = (value ?? '').toLowerCase();
+    return v === 'true' || v === '1';
+}
+function getEnvConfig() {
+    return {
+        serverUrl: process.env.ELASTIC_APM_SERVER_URL,
+        secretToken: process.env.ELASTIC_APM_SECRET_TOKEN,
+        apiKey: process.env.ELASTIC_APM_API_KEY,
+        serviceName: process.env.ELASTIC_APM_SERVICE_NAME || 'cli',
+        debug: isTruthy(process.env.ELASTIC_APM_DEBUG),
+    };
+}
+function initCliApm(options = {}) {
+    const config = getEnvConfig();
+    return (0, apm_1.initApm)({
+        serverUrl: config.serverUrl,
+        secretToken: config.secretToken,
+        apiKey: config.apiKey,
+        serviceName: config.serviceName,
+        serviceVersion: process.env.BUILD_NUMBER,
+        serviceNode: process.env.AGENT_NAME || process.env.RUNNER_NAME || os.hostname(),
+        debug: config.debug || Boolean(options.debug),
+        globalLabels: pipelineTags(),
+    });
+}
+function randomHex(bytes) {
+    return (0, crypto_1.randomBytes)(bytes).toString('hex');
+}
+function providerName() {
+    return process.env.CI_PROVIDER || 'cli';
+}
+function pipelineName() {
+    return process.env.BUILD_DEFINITION_NAME || process.env.CI_PIPELINE_NAME || 'ci-pipeline';
+}
+function pipelineTags() {
+    const tags = {};
+    const add = (key, value) => {
+        if (value) {
+            tags[key] = value;
+        }
+    };
+    const buildId = process.env.BUILD_ID;
+    const buildNumber = process.env.BUILD_NUMBER;
+    const branch = process.env.BUILD_BRANCH;
+    const commit = process.env.BUILD_COMMIT;
+    const repo = process.env.BUILD_REPO;
+    const provider = providerName();
+    add('definition_name', pipelineName());
+    add('build_id', buildId);
+    add('build_number', buildNumber);
+    add('branch', branch);
+    add('commit', commit);
+    add('repo', repo);
+    add('ci_provider', provider);
+    add('runner_os', process.env.RUNNER_OS);
+    add('runner_arch', process.env.RUNNER_ARCH);
+    add('ci.pipeline.id', buildId);
+    add('ci.pipeline.name', pipelineName());
+    add('ci.pipeline.run.id', buildId);
+    add('ci.pipeline.run.number', buildNumber);
+    add('ci.pipeline.run.url', process.env.BUILD_URL);
+    add('ci.pipeline.run.user', process.env.GITHUB_ACTOR || process.env.BUILD_REQUESTED_FOR);
+    add('ci.pipeline.run.result', process.env.JOB_STATUS);
+    add('ci.pipeline.agent.name', process.env.AGENT_NAME || process.env.RUNNER_NAME);
+    add('ci.job.id', process.env.JOB_ID);
+    add('ci.job.name', process.env.JOB_NAME);
+    add('ci.job.status', process.env.JOB_STATUS);
+    add('ci.step.name', 'ci-apm-trace');
+    add('ci.build.ref', branch);
+    add('ci.build.commit', commit);
+    add('ci.build.repo', repo);
+    add('vcs.repository.url', process.env.BUILD_REPO_URI);
+    add('vcs.ref.head.name', process.env.BUILD_REF || branch);
+    add('vcs.commit.id', commit);
+    return tags;
+}
+function pipelineUser() {
+    const user = {};
+    const username = process.env.GITHUB_ACTOR || process.env.BUILD_REQUESTED_FOR;
+    const id = process.env.GITHUB_ACTOR_ID || process.env.BUILD_REQUESTED_FOR_ID;
+    const email = process.env.GITHUB_ACTOR_EMAIL || process.env.BUILD_REQUESTED_FOR_EMAIL;
+    if (id) {
+        user.id = id;
+    }
+    if (email) {
+        user.email = email;
+    }
+    if (username) {
+        user.username = username;
+    }
+    return user;
+}
+function pipelineCustom() {
+    const custom = {};
+    const add = (key, value) => {
+        if (value) {
+            custom[key] = value;
+        }
+    };
+    add('definition_id', process.env.BUILD_DEFINITION_ID);
+    add('definition_name', pipelineName());
+    add('build_id', process.env.BUILD_ID);
+    add('build_number', process.env.BUILD_NUMBER);
+    add('build_url', process.env.BUILD_URL);
+    add('requested_for', process.env.GITHUB_ACTOR || process.env.BUILD_REQUESTED_FOR);
+    add('agent_name', process.env.AGENT_NAME || process.env.RUNNER_NAME);
+    add('agent_version', process.env.AGENT_VERSION);
+    add('job_id', process.env.JOB_ID);
+    add('job_name', process.env.JOB_NAME);
+    add('repo_uri', process.env.BUILD_REPO_URI);
+    return custom;
+}
+//# sourceMappingURL=cli-common.js.map
+
+/***/ }),
+
+/***/ 365:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.runMain = runMain;
+const apm_1 = __nccwpck_require__(5021);
+const cli_common_1 = __nccwpck_require__(6645);
+async function runMain(options) {
+    (0, cli_common_1.initCliApm)({ debug: options.debug });
+    const traceId = process.env.APM_TRACE_ID || (0, cli_common_1.randomHex)(16);
+    const transactionId = process.env.APM_TRANSACTION_ID || (0, cli_common_1.randomHex)(8);
+    await apm_1.apm.sendSpan({
+        traceId,
+        spanId: (0, cli_common_1.randomHex)(8),
+        parentId: transactionId,
+        name: 'Main Task Execution',
+        type: 'task',
+        subtype: (0, cli_common_1.providerName)(),
+        action: 'execute',
+        startMs: Date.now(),
+        tags: (0, cli_common_1.pipelineTags)(),
+    });
+    await apm_1.apm.sendLog({
+        message: `${options.traceName} task executed`,
+        level: 'info',
+        logger: 'ci-apm-trace',
+        traceId,
+        transactionId,
+    });
+}
+//# sourceMappingURL=cli-main.js.map
+
+/***/ }),
+
+/***/ 9150:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.runPost = runPost;
+const apm_1 = __nccwpck_require__(5021);
+const cli_common_1 = __nccwpck_require__(6645);
+async function runPost(options) {
+    (0, cli_common_1.initCliApm)({ debug: options.debug });
+    const jobStatus = process.env.JOB_STATUS || 'Succeeded';
+    const failed = options.fail || jobStatus === 'Failed' || jobStatus === 'Canceled';
+    const traceId = process.env.APM_TRACE_ID || (0, cli_common_1.randomHex)(16);
+    const transactionId = process.env.APM_TRANSACTION_ID || (0, cli_common_1.randomHex)(8);
+    const spanId = process.env.APM_SPAN_ID || (0, cli_common_1.randomHex)(8);
+    const startMsRaw = process.env.APM_JOB_START_MS;
+    const startMs = startMsRaw ? Number(startMsRaw) : Date.now();
+    const durationMs = startMsRaw ? Math.max(0, Date.now() - startMs) : 0;
+    const tags = (0, cli_common_1.pipelineTags)();
+    const buildNumber = process.env.BUILD_NUMBER;
+    const transactionName = buildNumber ? `${options.traceName}-${buildNumber}` : options.traceName;
+    await apm_1.apm.sendSpan({
+        traceId,
+        spanId,
+        parentId: transactionId,
+        name: 'Job End',
+        type: 'job',
+        subtype: (0, cli_common_1.providerName)(),
+        action: 'end',
+        startMs,
+        durationMs,
+        outcome: failed ? 'failure' : 'success',
+        tags,
+    });
+    await apm_1.apm.sendTransaction({
+        id: transactionId,
+        traceId,
+        name: transactionName,
+        type: 'pipeline',
+        startMs,
+        durationMs,
+        result: failed ? 'failure' : 'success',
+        outcome: failed ? 'failure' : 'success',
+        spanCount: 3,
+        user: (0, cli_common_1.pipelineUser)(),
+        custom: (0, cli_common_1.pipelineCustom)(),
+        session: { id: traceId },
+        tags,
+    });
+    await apm_1.apm.sendLog({
+        message: failed ? `${(0, cli_common_1.pipelineName)()} pipeline has failed: ${jobStatus}` : `${(0, cli_common_1.pipelineName)()} pipeline has ended`,
+        level: failed ? 'error' : 'info',
+        logger: 'ci-apm-trace',
+        dataset: 'ci',
+        traceId,
+        transactionId,
+    });
+    if (failed) {
+        await apm_1.apm.sendError({
+            traceId,
+            transactionId,
+            parentId: transactionId,
+            message: `Pipeline failed: ${jobStatus}`,
+            type: 'pipeline-failure',
+            transaction: { name: transactionName, type: 'pipeline', sampled: true },
+            user: (0, cli_common_1.pipelineUser)(),
+            custom: (0, cli_common_1.pipelineCustom)(),
+            tags,
+        });
+    }
+    await apm_1.apm.sendMetric({
+        timestampMs: Date.now(),
+        samples: {
+            'ci.job.duration.ms': { value: durationMs, unit: 'ms' },
+            'ci.job.success': { value: failed ? 0 : 1, unit: 'bool' },
+        },
+        transaction: { name: transactionName, type: 'pipeline' },
+        tags,
+    });
+}
+//# sourceMappingURL=cli-post.js.map
+
+/***/ }),
+
+/***/ 7403:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.runPre = runPre;
+const apm_1 = __nccwpck_require__(5021);
+const cli_common_1 = __nccwpck_require__(6645);
+async function runPre(options) {
+    (0, cli_common_1.initCliApm)({ debug: options.debug });
+    const traceId = process.env.APM_TRACE_ID || (0, cli_common_1.randomHex)(16);
+    const transactionId = (0, cli_common_1.randomHex)(8);
+    const spanId = (0, cli_common_1.randomHex)(8);
+    const startMs = Date.now();
+    process.env.APM_TRACE_ID = traceId;
+    process.env.APM_TRANSACTION_ID = transactionId;
+    process.env.APM_SPAN_ID = spanId;
+    process.env.APM_JOB_START_MS = String(startMs);
+    await apm_1.apm.sendSpan({
+        traceId,
+        spanId,
+        parentId: transactionId,
+        name: 'Job Start',
+        type: 'job',
+        subtype: (0, cli_common_1.providerName)(),
+        action: 'start',
+        startMs,
+        tags: (0, cli_common_1.pipelineTags)(),
+    });
+    await apm_1.apm.sendLog({
+        message: `${(0, cli_common_1.pipelineName)()} pipeline has started`,
+        level: 'info',
+        logger: 'ci-apm-trace',
+        traceId,
+        transactionId,
+    });
+    process.stdout.write(`export APM_TRACE_ID=${traceId}\n`);
+    process.stdout.write(`export APM_TRANSACTION_ID=${transactionId}\n`);
+    process.stdout.write(`export APM_SPAN_ID=${spanId}\n`);
+    process.stdout.write(`export APM_JOB_START_MS=${startMs}\n`);
+}
+//# sourceMappingURL=cli-pre.js.map
+
+/***/ }),
+
 /***/ 4459:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -489,8 +823,129 @@ const yargs_1 = __importDefault(__nccwpck_require__(495));
 const helpers_1 = __nccwpck_require__(7763);
 const apm_1 = __nccwpck_require__(5021);
 const lifecycle_1 = __nccwpck_require__(3369);
+const cli_pre_1 = __nccwpck_require__(7403);
+const cli_main_1 = __nccwpck_require__(365);
+const cli_post_1 = __nccwpck_require__(9150);
+function applyEnv(args) {
+    if (args['build-id']) {
+        process.env.BUILD_ID = args['build-id'];
+    }
+    if (args['build-number']) {
+        process.env.BUILD_NUMBER = args['build-number'];
+    }
+    if (args.branch) {
+        process.env.BUILD_BRANCH = args.branch;
+    }
+    if (args.commit) {
+        process.env.BUILD_COMMIT = args.commit;
+    }
+    if (args.repo) {
+        process.env.BUILD_REPO = args.repo;
+    }
+    if (args['ci-provider']) {
+        process.env.CI_PROVIDER = args['ci-provider'];
+    }
+}
+async function runFlat(args) {
+    applyEnv(args);
+    (0, apm_1.initApm)({ debug: args.debug });
+    const lifecycle = (0, lifecycle_1.createLifecycle)();
+    const labels = {
+        buildId: args['build-id'],
+        buildNumber: args['build-number'],
+        branch: args.branch,
+        commit: args.commit,
+        repo: args.repo,
+        ciProvider: args['ci-provider'],
+        runnerOs: process.env.RUNNER_OS,
+        runnerArch: process.env.RUNNER_ARCH,
+    };
+    lifecycle.startPipeline(args['trace-name'], labels);
+    lifecycle.addStep('cli-run');
+    if (args.fail) {
+        process.exitCode = 1;
+        await lifecycle.endPipelineFailure(new Error('Pipeline failed because --fail was set'));
+    }
+    else {
+        process.exitCode = 0;
+        await lifecycle.endPipelineSuccess();
+    }
+}
 async function main() {
-    const argv = (0, yargs_1.default)((0, helpers_1.hideBin)(process.argv))
+    const parser = (0, yargs_1.default)((0, helpers_1.hideBin)(process.argv))
+        .scriptName('ci-apm-trace')
+        .command('pre', 'Start the trace: generate IDs and emit APM_* environment variables for main/post', (y) => y.options({
+        'trace-name': {
+            type: 'string',
+            default: 'ci-pipeline',
+            description: 'Name of the pipeline trace',
+        },
+        debug: {
+            type: 'boolean',
+            default: false,
+            description: 'Show the APM server response in the output',
+        },
+    }), async (argv) => {
+        const args = argv;
+        try {
+            await (0, cli_pre_1.runPre)({ traceName: args['trace-name'], debug: args.debug });
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.error(`ci-apm-trace pre failed: ${message}`);
+            process.exitCode = 1;
+        }
+    })
+        .command('main', 'Record the main task execution span under the running trace', (y) => y.options({
+        'trace-name': {
+            type: 'string',
+            default: 'ci-pipeline',
+            description: 'Name of the pipeline trace',
+        },
+        debug: {
+            type: 'boolean',
+            default: false,
+            description: 'Show the APM server response in the output',
+        },
+    }), async (argv) => {
+        const args = argv;
+        try {
+            await (0, cli_main_1.runMain)({ traceName: args['trace-name'], debug: args.debug });
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.error(`ci-apm-trace main failed: ${message}`);
+            process.exitCode = 1;
+        }
+    })
+        .command('post', 'End the trace: transaction, error, and metrics for the completed pipeline', (y) => y.options({
+        'trace-name': {
+            type: 'string',
+            default: 'ci-pipeline',
+            description: 'Name of the pipeline trace',
+        },
+        fail: {
+            type: 'boolean',
+            default: false,
+            description: 'Simulate a pipeline failure',
+        },
+        debug: {
+            type: 'boolean',
+            default: false,
+            description: 'Show the APM server response in the output',
+        },
+    }), async (argv) => {
+        const args = argv;
+        try {
+            await (0, cli_post_1.runPost)({ traceName: args['trace-name'], fail: args.fail, debug: args.debug });
+            process.exitCode = args.fail ? 1 : 0;
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.error(`ci-apm-trace post failed: ${message}`);
+            process.exitCode = 1;
+        }
+    })
         .options({
         'trace-name': {
             type: 'string',
@@ -532,48 +987,10 @@ async function main() {
             description: 'Show the APM server response in the output',
         },
     })
-        .parseSync();
-    if (argv['build-id']) {
-        process.env.BUILD_ID = argv['build-id'];
-    }
-    if (argv['build-number']) {
-        process.env.BUILD_NUMBER = argv['build-number'];
-    }
-    if (argv.branch) {
-        process.env.BUILD_BRANCH = argv.branch;
-    }
-    if (argv.commit) {
-        process.env.BUILD_COMMIT = argv.commit;
-    }
-    if (argv.repo) {
-        process.env.BUILD_REPO = argv.repo;
-    }
-    if (argv['ci-provider']) {
-        process.env.CI_PROVIDER = argv['ci-provider'];
-    }
-    (0, apm_1.initApm)({ debug: argv.debug });
-    const lifecycle = (0, lifecycle_1.createLifecycle)();
-    const labels = {
-        buildId: argv['build-id'],
-        buildNumber: argv['build-number'],
-        branch: argv.branch,
-        commit: argv.commit,
-        repo: argv.repo,
-        ciProvider: argv['ci-provider'],
-        runnerOs: process.env.RUNNER_OS,
-        runnerArch: process.env.RUNNER_ARCH,
-    };
-    lifecycle.startPipeline(argv['trace-name'], labels);
-    lifecycle.addStep('cli-run');
-    if (argv.fail) {
-        process.exitCode = 1;
-        await lifecycle.endPipelineFailure(new Error('Pipeline failed because --fail was set'));
-        process.exit(1);
-    }
-    else {
-        process.exitCode = 0;
-        await lifecycle.endPipelineSuccess();
-        process.exit(0);
+        .help();
+    const argv = (await parser.parseAsync());
+    if (argv._.length === 0) {
+        await runFlat(argv);
     }
 }
 main().catch((error) => {
@@ -3654,7 +4071,7 @@ exports.colors = [6, 2, 3, 4, 5, 1];
 try {
 	// Optional dependency (as in, doesn't need to be installed, NOT like optionalDependencies in package.json)
 	// eslint-disable-next-line import/no-extraneous-dependencies
-	const supportsColor = __nccwpck_require__(75);
+	const supportsColor = __nccwpck_require__(2438);
 
 	if (supportsColor && (supportsColor.stderr || supportsColor).level >= 2) {
 		exports.colors = [
@@ -7445,10 +7862,161 @@ module.exports = (string, columns, options) => {
 
 /***/ }),
 
-/***/ 75:
+/***/ 2745:
 /***/ ((module) => {
 
-module.exports = eval("require")("supports-color");
+"use strict";
+
+
+module.exports = (flag, argv = process.argv) => {
+	const prefix = flag.startsWith('-') ? '' : (flag.length === 1 ? '-' : '--');
+	const position = argv.indexOf(prefix + flag);
+	const terminatorPosition = argv.indexOf('--');
+	return position !== -1 && (terminatorPosition === -1 || position < terminatorPosition);
+};
+
+
+/***/ }),
+
+/***/ 2438:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+const os = __nccwpck_require__(857);
+const tty = __nccwpck_require__(2018);
+const hasFlag = __nccwpck_require__(2745);
+
+const {env} = process;
+
+let forceColor;
+if (hasFlag('no-color') ||
+	hasFlag('no-colors') ||
+	hasFlag('color=false') ||
+	hasFlag('color=never')) {
+	forceColor = 0;
+} else if (hasFlag('color') ||
+	hasFlag('colors') ||
+	hasFlag('color=true') ||
+	hasFlag('color=always')) {
+	forceColor = 1;
+}
+
+if ('FORCE_COLOR' in env) {
+	if (env.FORCE_COLOR === 'true') {
+		forceColor = 1;
+	} else if (env.FORCE_COLOR === 'false') {
+		forceColor = 0;
+	} else {
+		forceColor = env.FORCE_COLOR.length === 0 ? 1 : Math.min(parseInt(env.FORCE_COLOR, 10), 3);
+	}
+}
+
+function translateLevel(level) {
+	if (level === 0) {
+		return false;
+	}
+
+	return {
+		level,
+		hasBasic: true,
+		has256: level >= 2,
+		has16m: level >= 3
+	};
+}
+
+function supportsColor(haveStream, streamIsTTY) {
+	if (forceColor === 0) {
+		return 0;
+	}
+
+	if (hasFlag('color=16m') ||
+		hasFlag('color=full') ||
+		hasFlag('color=truecolor')) {
+		return 3;
+	}
+
+	if (hasFlag('color=256')) {
+		return 2;
+	}
+
+	if (haveStream && !streamIsTTY && forceColor === undefined) {
+		return 0;
+	}
+
+	const min = forceColor || 0;
+
+	if (env.TERM === 'dumb') {
+		return min;
+	}
+
+	if (process.platform === 'win32') {
+		// Windows 10 build 10586 is the first Windows release that supports 256 colors.
+		// Windows 10 build 14931 is the first release that supports 16m/TrueColor.
+		const osRelease = os.release().split('.');
+		if (
+			Number(osRelease[0]) >= 10 &&
+			Number(osRelease[2]) >= 10586
+		) {
+			return Number(osRelease[2]) >= 14931 ? 3 : 2;
+		}
+
+		return 1;
+	}
+
+	if ('CI' in env) {
+		if (['TRAVIS', 'CIRCLECI', 'APPVEYOR', 'GITLAB_CI', 'GITHUB_ACTIONS', 'BUILDKITE'].some(sign => sign in env) || env.CI_NAME === 'codeship') {
+			return 1;
+		}
+
+		return min;
+	}
+
+	if ('TEAMCITY_VERSION' in env) {
+		return /^(9\.(0*[1-9]\d*)\.|\d{2,}\.)/.test(env.TEAMCITY_VERSION) ? 1 : 0;
+	}
+
+	if (env.COLORTERM === 'truecolor') {
+		return 3;
+	}
+
+	if ('TERM_PROGRAM' in env) {
+		const version = parseInt((env.TERM_PROGRAM_VERSION || '').split('.')[0], 10);
+
+		switch (env.TERM_PROGRAM) {
+			case 'iTerm.app':
+				return version >= 3 ? 3 : 2;
+			case 'Apple_Terminal':
+				return 2;
+			// No default
+		}
+	}
+
+	if (/-256(color)?$/i.test(env.TERM)) {
+		return 2;
+	}
+
+	if (/^screen|^xterm|^vt100|^vt220|^rxvt|color|ansi|cygwin|linux/i.test(env.TERM)) {
+		return 1;
+	}
+
+	if ('COLORTERM' in env) {
+		return 1;
+	}
+
+	return min;
+}
+
+function getSupportLevel(stream) {
+	const level = supportsColor(stream, stream && stream.isTTY);
+	return translateLevel(level);
+}
+
+module.exports = {
+	supportsColor: getSupportLevel,
+	stdout: translateLevel(supportsColor(true, tty.isatty(1))),
+	stderr: translateLevel(supportsColor(true, tty.isatty(2)))
+};
 
 
 /***/ }),
@@ -15613,7 +16181,7 @@ module.exports = /*#__PURE__*/JSON.parse('{"application/1d-interleaved-parityfec
 /***/ ((module) => {
 
 "use strict";
-module.exports = /*#__PURE__*/JSON.parse('{"name":"@mockholm/ci-apm-trace","version":"1.1.8","description":"Sends CI pipeline traces to Elastic APM","main":"dist/lifecycle.js","bin":{"ci-apm-trace":"dist/cli.js"},"files":["dist"],"scripts":{"build":"tsc -p tsconfig.json","typecheck":"tsc --noEmit","start":"node dist/cli.js","icons":"node scripts/gen-icon.js","bundle:github":"node scripts/bundle-github.js","package:azure":"node scripts/package-azure.js"},"engines":{"node":">=18"},"dependencies":{"axios":"^1.19.0","azure-pipelines-task-lib":"^5.0.0","yargs":"^17.7.2"},"devDependencies":{"@types/node":"^20.14.0","@types/yargs":"^17.0.32","@vercel/ncc":"^0.44.1","tfx-cli":"^0.23.4","typescript":"^5.5.0"}}');
+module.exports = /*#__PURE__*/JSON.parse('{"name":"@mockholm/ci-apm-trace","version":"1.1.9","description":"Sends CI pipeline traces to Elastic APM","main":"dist/lifecycle.js","bin":{"ci-apm-trace":"dist/cli.js"},"files":["dist"],"scripts":{"build":"tsc -p tsconfig.json","typecheck":"tsc --noEmit","start":"node dist/cli.js","icons":"node scripts/gen-icon.js","bundle:github":"node scripts/bundle-github.js","package:azure":"node scripts/package-azure.js"},"engines":{"node":">=18"},"dependencies":{"axios":"^1.19.0","azure-pipelines-task-lib":"^5.0.0","yargs":"^17.7.2"},"devDependencies":{"@types/node":"^20.14.0","@types/yargs":"^17.0.32","@vercel/ncc":"^0.44.1","tfx-cli":"^0.23.4","typescript":"^5.5.0"}}');
 
 /***/ })
 
