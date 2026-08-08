@@ -40,7 +40,7 @@ jobs:
           if [ -z "$APM_TOKEN" ]; then
             echo "::warning::The ELASTIC_APM_SECRET_TOKEN secret is not set; the trace will be sent without authentication."
           fi
-
+          echo "APM server URL: $APM_SERVER"
       - name: Prepare
         run: echo "Preparing the pipeline run (before the action step)..."
 
