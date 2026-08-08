@@ -42,10 +42,6 @@ steps:
 
 > **Migrating from v1.0.x:** the `apmServer` and `apmToken` inputs were replaced by the `apmConnection` service connection. Update existing pipelines to select the connection instead of passing those inputs.
 
-## Pipeline decorator
-
-The extension also installs a pipeline decorator that generates a per-job `APM_TRACE_ID` and prints `Elastic APM: Pipeline start/end` markers in **every job** of the organization. The task reuses the trace ID when present; if the decorator is not installed the `PreJob` handler generates one.
-
 ## Automatically captured metadata
 
 | Label | Source |

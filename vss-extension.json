@@ -17,8 +17,7 @@
     "trace",
     "monitoring",
     "ci",
-    "service-connection",
-    "decorator"
+    "service-connection"
   ],
   "icons": {
     "default": "icons/128.png"
@@ -26,11 +25,6 @@
   "files": [
     {
       "path": "CiApmTrace"
-    },
-    {
-      "path": "decorators/apm-decorator.yml",
-      "addressable": true,
-      "contentType": "text/plain"
     }
   ],
   "content": {
@@ -94,18 +88,6 @@
           }
         ],
         "helpMarkDown": "Enter the URL and secret token of your Elastic APM Server. The secret token can be left blank if the APM Server is configured without authentication."
-      }
-    },
-    {
-      "id": "apm-trace-decorator",
-      "description": "Injects the Elastic APM trace ID into every job",
-      "type": "ms.azure-pipelines.pipeline-decorator",
-      "targets": [
-        "ms.azure-pipelines-agent-job.pre-job-tasks",
-        "ms.azure-pipelines-agent-job.post-job-tasks"
-      ],
-      "properties": {
-        "template": "decorators/apm-decorator.yml"
       }
     }
   ]

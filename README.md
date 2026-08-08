@@ -192,11 +192,10 @@ The Azure DevOps task is an extension (`vss-extension.json`) that ships three pi
 
 - **`CiApmTrace@1` task** — a service-connection-backed task with `PreJob`, main, and `PostJob` handlers
 - **`apm` service connection type** — a "New service connection" entry named *Elastic APM* that stores the APM Server URL and secret token
-- **pipeline decorator** (`decorators/apm-decorator.yml`) — generates a per-job `APM_TRACE_ID` and prints start/end markers in every job once the extension is installed
 
 ### What the task sends
 
-1. **PreJob handler** (`dist/azure-prejob.js`) opens a `Job Start` span, generates a trace ID (or reuses the decorator's `APM_TRACE_ID`), and persists `APM_TRACE_ID`, `APM_SPAN_ID`, and `APM_JOB_START_MS` for the rest of the job.
+1. **PreJob handler** (`dist/azure-prejob.js`) opens a `Job Start` span, generates a trace ID, and persists `APM_TRACE_ID`, `APM_SPAN_ID`, and `APM_JOB_START_MS` for the rest of the job.
 2. **Main handler** (`dist/azure-main.js`) records a `Main Task Execution` span under the same trace.
 3. **PostJob handler** (`dist/azure-postjob.js`) closes the `Job End` span, sends the wrapping pipeline **transaction** (named from `traceName`, with the build ID appended), and records an **error** when the job failed and **metrics** (`ci.job.duration.ms`, `ci.job.success`) on every run.
 
@@ -243,10 +242,6 @@ Inputs:
 
 > **Migrating from v1.0.x:** the `apmServer` and `apmToken` inputs were replaced by the `apmConnection` service connection. Update existing pipelines to select the connection instead of passing those inputs.
 
-### About the decorator
-
-The pipeline decorator injects two `bash` steps (a trace-ID generator before the job and an end marker after it) into **every job of every pipeline** in the organization where the extension is installed. To avoid the extra steps, remove the decorator contribution (`apm-trace-decorator`) from `vss-extension.json` and republish — the task itself generates a trace ID when none is present.
-
 ## Publishing to the Azure DevOps Marketplace
 
 The task is distributed as an **Azure DevOps extension** (a `.vsix` file). The repository already contains everything needed to package it:
@@ -254,7 +249,6 @@ The task is distributed as an **Azure DevOps extension** (a `.vsix` file). The r
 ```
 vss-extension.json       # extension manifest (edit your publisher id)
 CiApmTrace/              # task folder, generated at package time (gitignored)
-decorators/              # pipeline decorator template (apm-decorator.yml)
 icons/                   # Marketplace icons (generated via `npm run icons`)
 overview.md              # Marketplace details page
 scripts/package-azure.js # packaging script
@@ -306,23 +300,12 @@ npx tfx extension publish \
   --output-path out
 ```
 
-The extension is published **public** by default because `vss-extension.json` declares `"galleryFlags": ["Public"]`. To keep it private and share it only with specific organizations, remove that flag and pass `--share-with`:
-
-```bash
-npx tfx extension publish \
-  --manifest-globs vss-extension.json \
-  --token "$AZURE_DEVOPS_EXTENSION_PAT" \
-  --share-with my-azure-devops-organization
-```
-
 To publish without waiting for the Marketplace's validation result (useful in CI), pass `--no-wait-validation` — the workflow already does this.
-
-Making the extension **public** requires Microsoft Marketplace approval after the first publish, and your publisher must be **verified**. You can start the verification process at `https://marketplace.visualstudio.com/manage/publishers/<publisher>`. Until verification completes, the extension stays private even with the `Public` flag.
 
 ### 4. Install the extension
 
 1. Go to **Organization settings > Extensions** in Azure DevOps.
-2. Select **Browse marketplace** (or **Shared with me** for a privately shared extension).
+2. Select **Browse marketplace**.
 3. Find **CI APM Trace**, select **Get it free**, and install it into your organization.
 4. The `CiApmTrace@1` task now appears in the **Utility** category of the pipeline task picker.
 
