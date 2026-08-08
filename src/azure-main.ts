@@ -20,6 +20,14 @@ async function run(): Promise<void> {
     tags: pipelineTags(),
   })
 
+  await apm.sendLog({
+    message: 'CiApmTrace task executed',
+    level: 'info',
+    logger: 'ci-apm-trace',
+    traceId,
+    transactionId,
+  })
+
   tl.setResult(tl.TaskResult.Succeeded, 'Elastic APM: custom span sent')
 }
 

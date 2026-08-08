@@ -97,6 +97,17 @@ export interface MetricEventOptions {
   tags?: Record<string, string>
 }
 
+export interface LogEventOptions {
+  message: string
+  timestampMs?: number
+  level?: string
+  logger?: string
+  dataset?: string
+  traceId?: string
+  transactionId?: string
+  spanId?: string
+}
+
 export interface ApmAgent {
   startTransaction(name: string, type: string): Transaction
   startSpan(name: string, type: string): Span | null
@@ -106,6 +117,7 @@ export interface ApmAgent {
   sendTransaction(event: TransactionEventOptions): Promise<void>
   sendError(event: ErrorEventOptions): Promise<void>
   sendMetric(event: MetricEventOptions): Promise<void>
+  sendLog(event: LogEventOptions): Promise<void>
 }
 
 interface PendingSpan {
@@ -426,6 +438,20 @@ class ApmClient implements ApmAgent {
     await this.post(`${this.metadataLine()}\n${JSON.stringify({ metricset })}\n`)
   }
 
+  async sendLog(event: LogEventOptions): Promise<void> {
+    const log: Record<string, unknown> = this.compact({
+      message: event.message,
+      '@timestamp': (event.timestampMs ?? Date.now()) * 1000,
+      'trace.id': event.traceId,
+      'transaction.id': event.transactionId,
+      'span.id': event.spanId,
+      'log.level': event.level,
+      'log.logger': event.logger,
+      'event.dataset': event.dataset,
+    })
+    await this.post(`${this.metadataLine()}\n${JSON.stringify({ log })}\n`)
+  }
+
   private async post(payload: string): Promise<void> {
     if (!this.serverUrl) {
       return
@@ -588,4 +614,5 @@ export const apm: ApmAgent = {
   sendTransaction: (event) => current.sendTransaction(event),
   sendError: (event) => current.sendError(event),
   sendMetric: (event) => current.sendMetric(event),
+  sendLog: (event) => current.sendLog(event),
 }

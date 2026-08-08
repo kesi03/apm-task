@@ -79,6 +79,14 @@ async function run() {
         session: { id: traceId },
         tags,
     });
+    await apm_1.apm.sendLog({
+        message: failed ? `Azure Pipelines job failed: ${jobStatus}` : 'Azure Pipelines job completed',
+        level: failed ? 'error' : 'info',
+        logger: 'ci-apm-trace',
+        dataset: 'azure-pipelines',
+        traceId,
+        transactionId,
+    });
     if (failed) {
         await apm_1.apm.sendError({
             traceId,

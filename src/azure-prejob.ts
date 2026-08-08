@@ -27,6 +27,14 @@ async function run(): Promise<void> {
     tags: pipelineTags(),
   })
 
+  await apm.sendLog({
+    message: 'Azure Pipelines job started',
+    level: 'info',
+    logger: 'ci-apm-trace',
+    traceId,
+    transactionId,
+  })
+
   console.log('Elastic APM: job span started')
 }
 

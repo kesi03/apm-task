@@ -92,6 +92,16 @@ export interface MetricEventOptions {
     };
     tags?: Record<string, string>;
 }
+export interface LogEventOptions {
+    message: string;
+    timestampMs?: number;
+    level?: string;
+    logger?: string;
+    dataset?: string;
+    traceId?: string;
+    transactionId?: string;
+    spanId?: string;
+}
 export interface ApmAgent {
     startTransaction(name: string, type: string): Transaction;
     startSpan(name: string, type: string): Span | null;
@@ -101,6 +111,7 @@ export interface ApmAgent {
     sendTransaction(event: TransactionEventOptions): Promise<void>;
     sendError(event: ErrorEventOptions): Promise<void>;
     sendMetric(event: MetricEventOptions): Promise<void>;
+    sendLog(event: LogEventOptions): Promise<void>;
 }
 export declare function initApm(options?: ApmInitOptions): ApmAgent;
 export declare const apm: ApmAgent;

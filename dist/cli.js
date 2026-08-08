@@ -307,6 +307,19 @@ class ApmClient {
         }
         await this.post(`${this.metadataLine()}\n${JSON.stringify({ metricset })}\n`);
     }
+    async sendLog(event) {
+        const log = this.compact({
+            message: event.message,
+            '@timestamp': (event.timestampMs ?? Date.now()) * 1000,
+            'trace.id': event.traceId,
+            'transaction.id': event.transactionId,
+            'span.id': event.spanId,
+            'log.level': event.level,
+            'log.logger': event.logger,
+            'event.dataset': event.dataset,
+        });
+        await this.post(`${this.metadataLine()}\n${JSON.stringify({ log })}\n`);
+    }
     async post(payload) {
         if (!this.serverUrl) {
             return;
@@ -457,6 +470,7 @@ exports.apm = {
     sendTransaction: (event) => current.sendTransaction(event),
     sendError: (event) => current.sendError(event),
     sendMetric: (event) => current.sendMetric(event),
+    sendLog: (event) => current.sendLog(event),
 };
 //# sourceMappingURL=apm.js.map
 

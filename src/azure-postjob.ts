@@ -50,6 +50,15 @@ async function run(): Promise<void> {
     tags,
   })
 
+  await apm.sendLog({
+    message: failed ? `Azure Pipelines job failed: ${jobStatus}` : 'Azure Pipelines job completed',
+    level: failed ? 'error' : 'info',
+    logger: 'ci-apm-trace',
+    dataset: 'azure-pipelines',
+    traceId,
+    transactionId,
+  })
+
   if (failed) {
     await apm.sendError({
       traceId,

@@ -51,6 +51,13 @@ async function run() {
         startMs: Date.now(),
         tags: (0, azure_common_1.pipelineTags)(),
     });
+    await apm_1.apm.sendLog({
+        message: 'CiApmTrace task executed',
+        level: 'info',
+        logger: 'ci-apm-trace',
+        traceId,
+        transactionId,
+    });
     tl.setResult(tl.TaskResult.Succeeded, 'Elastic APM: custom span sent');
 }
 run().catch((error) => {
