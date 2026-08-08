@@ -57,6 +57,8 @@ async function run() {
         parentId: transactionId,
         name: 'Job End',
         type: 'job',
+        subtype: 'azure-pipelines',
+        action: 'end',
         startMs,
         durationMs,
         outcome: failed ? 'failure' : 'success',
@@ -72,23 +74,31 @@ async function run() {
         result: failed ? 'failure' : 'success',
         outcome: failed ? 'failure' : 'success',
         spanCount: 3,
+        user: (0, azure_common_1.pipelineUser)(),
+        custom: (0, azure_common_1.pipelineCustom)(),
+        session: { id: traceId },
         tags,
     });
     if (failed) {
         await apm_1.apm.sendError({
             traceId,
-            transactionId: traceId,
+            transactionId,
+            parentId: transactionId,
             message: `Pipeline failed: ${jobStatus}`,
             type: 'pipeline-failure',
+            transaction: { name: transactionName, type: 'pipeline', sampled: true },
+            user: (0, azure_common_1.pipelineUser)(),
+            custom: (0, azure_common_1.pipelineCustom)(),
             tags,
         });
     }
     await apm_1.apm.sendMetric({
         timestampMs: Date.now(),
         samples: {
-            'ci.job.duration.ms': durationMs,
-            'ci.job.success': failed ? 0 : 1,
+            'ci.job.duration.ms': { value: durationMs, unit: 'ms' },
+            'ci.job.success': { value: failed ? 0 : 1, unit: 'bool' },
         },
+        transaction: { name: transactionName, type: 'pipeline' },
         tags,
     });
     if (failed) {

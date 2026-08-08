@@ -21,6 +21,8 @@ async function run(): Promise<void> {
     parentId: transactionId,
     name: 'Job Start',
     type: 'job',
+    subtype: 'azure-pipelines',
+    action: 'start',
     startMs,
     tags: pipelineTags(),
   })

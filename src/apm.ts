@@ -1,3 +1,4 @@
+import * as os from 'os'
 import axios from 'axios'
 import { randomBytes } from 'crypto'
 import pkg from '../package.json'
@@ -7,6 +8,10 @@ export interface ApmInitOptions {
   secretToken?: string
   apiKey?: string
   serviceName?: string
+  serviceVersion?: string
+  serviceNode?: string
+  serviceEnvironment?: string
+  globalLabels?: Record<string, string | number | boolean>
   debug?: boolean
 }
 
@@ -22,15 +27,25 @@ export interface Span {
 
 export type EventOutcome = 'success' | 'failure' | 'unknown'
 
+export interface UserContext {
+  id?: string
+  email?: string
+  username?: string
+  domain?: string
+}
+
 export interface SpanEventOptions {
   traceId: string
   spanId?: string
   parentId: string
   name: string
   type: string
+  subtype?: string
+  action?: string
   startMs: number
   durationMs?: number
   outcome?: EventOutcome
+  stacktrace?: string
   tags?: Record<string, string>
 }
 
@@ -44,22 +59,41 @@ export interface TransactionEventOptions {
   result: string
   outcome: EventOutcome
   spanCount?: number
+  parentId?: string
+  user?: UserContext
+  custom?: Record<string, unknown>
+  session?: { id: string; sequence?: number }
   tags?: Record<string, string>
 }
 
 export interface ErrorEventOptions {
-  traceId: string
+  traceId?: string
   transactionId?: string
+  parentId?: string
   timestampMs?: number
   message: string
   type?: string
+  code?: string
+  module?: string
+  culprit?: string
+  handled?: boolean
   stack?: string
+  transaction?: { name?: string; type?: string; sampled?: boolean }
+  user?: UserContext
+  custom?: Record<string, unknown>
   tags?: Record<string, string>
+}
+
+export interface MetricSample {
+  value: number
+  unit?: string
+  type?: string
 }
 
 export interface MetricEventOptions {
   timestampMs?: number
-  samples: Record<string, number>
+  samples: Record<string, number | MetricSample>
+  transaction?: { name?: string; type?: string }
   tags?: Record<string, string>
 }
 
@@ -146,6 +180,11 @@ class ApmClient implements ApmAgent {
   private readonly secretToken: string | undefined
   private readonly apiKey: string | undefined
   private readonly serviceName: string
+  private readonly serviceVersion: string | undefined
+  private readonly serviceNode: string | undefined
+  private readonly serviceEnvironment: string
+  private readonly globalLabels: Record<string, string | number | boolean>
+  private readonly ephemeralId: string
   private readonly debug: boolean
   private readonly transactions: PendingTransaction[] = []
   private currentTransaction: PendingTransaction | null = null
@@ -155,6 +194,11 @@ class ApmClient implements ApmAgent {
     this.secretToken = nonEmpty(options.secretToken ?? process.env.ELASTIC_APM_SECRET_TOKEN)
     this.apiKey = nonEmpty(options.apiKey ?? process.env.ELASTIC_APM_API_KEY)
     this.serviceName = nonEmpty(options.serviceName ?? process.env.ELASTIC_APM_SERVICE_NAME) ?? 'ci-apm-trace'
+    this.serviceVersion = nonEmpty(options.serviceVersion ?? process.env.ELASTIC_APM_SERVICE_VERSION)
+    this.serviceNode = nonEmpty(options.serviceNode)
+    this.serviceEnvironment = nonEmpty(options.serviceEnvironment ?? process.env.ELASTIC_APM_ENVIRONMENT) ?? 'ci'
+    this.globalLabels = options.globalLabels ?? {}
+    this.ephemeralId = randomId()
     const envDebug = (process.env.ELASTIC_APM_DEBUG ?? '').toLowerCase()
     this.debug = Boolean(options.debug ?? (envDebug === 'true' || envDebug === '1'))
   }
@@ -251,6 +295,19 @@ class ApmClient implements ApmAgent {
       timestamp: event.startMs * 1000,
       duration: roundMs(event.durationMs ?? 0),
       outcome: event.outcome ?? 'success',
+      sample_rate: 1,
+    }
+    if (event.subtype) {
+      span.subtype = event.subtype
+    }
+    if (event.action) {
+      span.action = event.action
+    }
+    if (event.stacktrace) {
+      const frames = parseStack(event.stacktrace)
+      if (frames.length > 0) {
+        span.stacktrace = frames
+      }
     }
     if (event.tags && Object.keys(event.tags).length > 0) {
       span.context = { tags: event.tags }
@@ -269,19 +326,39 @@ class ApmClient implements ApmAgent {
       timestamp: event.startMs * 1000,
       duration: roundMs(event.durationMs),
       sampled: true,
+      sample_rate: 1,
       span_count: { started: event.spanCount ?? 0 },
     }
+    if (event.parentId) {
+      transaction.parent_id = event.parentId
+    }
+    if (event.session && (event.session.id || event.session.sequence !== undefined)) {
+      transaction.session = this.compact({ ...event.session })
+    }
+    const context: Record<string, unknown> = {}
     if (event.tags && Object.keys(event.tags).length > 0) {
-      transaction.context = { tags: event.tags }
+      context.tags = event.tags
+    }
+    if (event.user) {
+      context.user = this.compact({ ...event.user })
+    }
+    if (event.custom && Object.keys(event.custom).length > 0) {
+      context.custom = this.compact({ ...event.custom })
+    }
+    if (Object.keys(context).length > 0) {
+      transaction.context = context
     }
     await this.post(`${this.metadataLine()}\n${JSON.stringify({ transaction })}\n`)
   }
 
   async sendError(event: ErrorEventOptions): Promise<void> {
-    const exception: Record<string, unknown> = {
+    const exception: Record<string, unknown> = this.compact({
       message: event.message,
       type: event.type ?? 'Error',
-    }
+      handled: event.handled ?? true,
+      code: event.code,
+      module: event.module,
+    })
     if (event.stack) {
       const frames = parseStack(event.stack)
       if (frames.length > 0) {
@@ -290,27 +367,58 @@ class ApmClient implements ApmAgent {
     }
     const error: Record<string, unknown> = {
       id: randomBytes(16).toString('hex'),
-      trace_id: event.traceId,
       timestamp: (event.timestampMs ?? Date.now()) * 1000,
       exception,
+    }
+    if (event.traceId) {
+      error.trace_id = event.traceId
     }
     if (event.transactionId) {
       error.transaction_id = event.transactionId
     }
+    error.parent_id = event.parentId ?? event.transactionId ?? (event.traceId ? event.traceId : undefined)
+    if (error.parent_id === undefined) {
+      delete error.parent_id
+    }
+    if (event.culprit) {
+      error.culprit = event.culprit
+    }
+    if (event.transaction) {
+      const transaction = this.compact({ ...event.transaction })
+      if (Object.keys(transaction).length > 0) {
+        error.transaction = transaction
+      }
+    }
+    const context: Record<string, unknown> = {}
     if (event.tags && Object.keys(event.tags).length > 0) {
-      error.context = { tags: event.tags }
+      context.tags = event.tags
+    }
+    if (event.user) {
+      context.user = this.compact({ ...event.user })
+    }
+    if (event.custom && Object.keys(event.custom).length > 0) {
+      context.custom = this.compact({ ...event.custom })
+    }
+    if (Object.keys(context).length > 0) {
+      error.context = context
     }
     await this.post(`${this.metadataLine()}\n${JSON.stringify({ error })}\n`)
   }
 
   async sendMetric(event: MetricEventOptions): Promise<void> {
-    const samples: Record<string, { value: number }> = {}
-    for (const [name, value] of Object.entries(event.samples)) {
-      samples[name] = { value }
+    const samples: Record<string, Record<string, unknown>> = {}
+    for (const [name, sample] of Object.entries(event.samples)) {
+      samples[name] = typeof sample === 'number' ? { value: sample } : this.compact({ ...sample })
     }
     const metricset: Record<string, unknown> = {
       samples,
       timestamp: (event.timestampMs ?? Date.now()) * 1000,
+    }
+    if (event.transaction) {
+      const transaction = this.compact({ ...event.transaction })
+      if (Object.keys(transaction).length > 0) {
+        metricset.transaction = transaction
+      }
     }
     if (event.tags && Object.keys(event.tags).length > 0) {
       metricset.tags = event.tags
@@ -347,18 +455,49 @@ class ApmClient implements ApmAgent {
   }
 
   private metadataLine(): string {
-    return JSON.stringify({
-      metadata: {
-        service: {
-          name: this.serviceName,
-          environment: 'ci',
-          agent: {
-            name: 'ci-apm-trace',
-            version: pkg.version,
-          },
-        },
+    const service: Record<string, unknown> = this.compact({
+      name: this.serviceName,
+      version: this.serviceVersion,
+      environment: this.serviceEnvironment,
+      node: this.serviceNode ? { configured_name: this.serviceNode } : undefined,
+      agent: {
+        name: 'ci-apm-trace',
+        version: pkg.version,
+        ephemeral_id: this.ephemeralId,
+      },
+      language: {
+        name: 'javascript',
+        version: process.versions.node,
+      },
+      runtime: {
+        name: 'node',
+        version: process.versions.node,
       },
     })
+    const metadata: Record<string, unknown> = this.compact({
+      service,
+      labels: Object.keys(this.globalLabels).length > 0 ? this.globalLabels : undefined,
+      system: {
+        architecture: process.arch,
+        hostname: os.hostname(),
+        platform: process.platform,
+      },
+      process: {
+        pid: process.pid,
+        title: process.title,
+      },
+    })
+    return JSON.stringify({ metadata })
+  }
+
+  private compact(obj: Record<string, unknown>): Record<string, unknown> {
+    const out: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(obj)) {
+      if (value !== undefined && value !== null) {
+        out[key] = value
+      }
+    }
+    return out
   }
 
   private logServerResponse(status: number | undefined, data: unknown): void {
@@ -378,7 +517,6 @@ class ApmClient implements ApmAgent {
             span: {
               id: span.id,
               trace_id: t.traceId,
-              transaction_id: t.id,
               parent_id: t.id,
               name: span.name,
               type: span.type,
@@ -396,6 +534,7 @@ class ApmClient implements ApmAgent {
               id: err.id,
               trace_id: t.traceId,
               transaction_id: t.id,
+              parent_id: t.id,
               timestamp: err.timestampUs,
               exception: {
                 message: err.message,

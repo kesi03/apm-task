@@ -1,10 +1,44 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.apm = void 0;
 exports.initApm = initApm;
+const os = __importStar(require("os"));
 const axios_1 = __importDefault(require("axios"));
 const crypto_1 = require("crypto");
 const package_json_1 = __importDefault(require("../package.json"));
@@ -42,6 +76,11 @@ class ApmClient {
         this.secretToken = nonEmpty(options.secretToken ?? process.env.ELASTIC_APM_SECRET_TOKEN);
         this.apiKey = nonEmpty(options.apiKey ?? process.env.ELASTIC_APM_API_KEY);
         this.serviceName = nonEmpty(options.serviceName ?? process.env.ELASTIC_APM_SERVICE_NAME) ?? 'ci-apm-trace';
+        this.serviceVersion = nonEmpty(options.serviceVersion ?? process.env.ELASTIC_APM_SERVICE_VERSION);
+        this.serviceNode = nonEmpty(options.serviceNode);
+        this.serviceEnvironment = nonEmpty(options.serviceEnvironment ?? process.env.ELASTIC_APM_ENVIRONMENT) ?? 'ci';
+        this.globalLabels = options.globalLabels ?? {};
+        this.ephemeralId = randomId();
         const envDebug = (process.env.ELASTIC_APM_DEBUG ?? '').toLowerCase();
         this.debug = Boolean(options.debug ?? (envDebug === 'true' || envDebug === '1'));
     }
@@ -133,7 +172,20 @@ class ApmClient {
             timestamp: event.startMs * 1000,
             duration: roundMs(event.durationMs ?? 0),
             outcome: event.outcome ?? 'success',
+            sample_rate: 1,
         };
+        if (event.subtype) {
+            span.subtype = event.subtype;
+        }
+        if (event.action) {
+            span.action = event.action;
+        }
+        if (event.stacktrace) {
+            const frames = parseStack(event.stacktrace);
+            if (frames.length > 0) {
+                span.stacktrace = frames;
+            }
+        }
         if (event.tags && Object.keys(event.tags).length > 0) {
             span.context = { tags: event.tags };
         }
@@ -150,18 +202,38 @@ class ApmClient {
             timestamp: event.startMs * 1000,
             duration: roundMs(event.durationMs),
             sampled: true,
+            sample_rate: 1,
             span_count: { started: event.spanCount ?? 0 },
         };
+        if (event.parentId) {
+            transaction.parent_id = event.parentId;
+        }
+        if (event.session && (event.session.id || event.session.sequence !== undefined)) {
+            transaction.session = this.compact({ ...event.session });
+        }
+        const context = {};
         if (event.tags && Object.keys(event.tags).length > 0) {
-            transaction.context = { tags: event.tags };
+            context.tags = event.tags;
+        }
+        if (event.user) {
+            context.user = this.compact({ ...event.user });
+        }
+        if (event.custom && Object.keys(event.custom).length > 0) {
+            context.custom = this.compact({ ...event.custom });
+        }
+        if (Object.keys(context).length > 0) {
+            transaction.context = context;
         }
         await this.post(`${this.metadataLine()}\n${JSON.stringify({ transaction })}\n`);
     }
     async sendError(event) {
-        const exception = {
+        const exception = this.compact({
             message: event.message,
             type: event.type ?? 'Error',
-        };
+            handled: event.handled ?? true,
+            code: event.code,
+            module: event.module,
+        });
         if (event.stack) {
             const frames = parseStack(event.stack);
             if (frames.length > 0) {
@@ -170,27 +242,58 @@ class ApmClient {
         }
         const error = {
             id: (0, crypto_1.randomBytes)(16).toString('hex'),
-            trace_id: event.traceId,
             timestamp: (event.timestampMs ?? Date.now()) * 1000,
             exception,
         };
+        if (event.traceId) {
+            error.trace_id = event.traceId;
+        }
         if (event.transactionId) {
             error.transaction_id = event.transactionId;
         }
+        error.parent_id = event.parentId ?? event.transactionId ?? (event.traceId ? event.traceId : undefined);
+        if (error.parent_id === undefined) {
+            delete error.parent_id;
+        }
+        if (event.culprit) {
+            error.culprit = event.culprit;
+        }
+        if (event.transaction) {
+            const transaction = this.compact({ ...event.transaction });
+            if (Object.keys(transaction).length > 0) {
+                error.transaction = transaction;
+            }
+        }
+        const context = {};
         if (event.tags && Object.keys(event.tags).length > 0) {
-            error.context = { tags: event.tags };
+            context.tags = event.tags;
+        }
+        if (event.user) {
+            context.user = this.compact({ ...event.user });
+        }
+        if (event.custom && Object.keys(event.custom).length > 0) {
+            context.custom = this.compact({ ...event.custom });
+        }
+        if (Object.keys(context).length > 0) {
+            error.context = context;
         }
         await this.post(`${this.metadataLine()}\n${JSON.stringify({ error })}\n`);
     }
     async sendMetric(event) {
         const samples = {};
-        for (const [name, value] of Object.entries(event.samples)) {
-            samples[name] = { value };
+        for (const [name, sample] of Object.entries(event.samples)) {
+            samples[name] = typeof sample === 'number' ? { value: sample } : this.compact({ ...sample });
         }
         const metricset = {
             samples,
             timestamp: (event.timestampMs ?? Date.now()) * 1000,
         };
+        if (event.transaction) {
+            const transaction = this.compact({ ...event.transaction });
+            if (Object.keys(transaction).length > 0) {
+                metricset.transaction = transaction;
+            }
+        }
         if (event.tags && Object.keys(event.tags).length > 0) {
             metricset.tags = event.tags;
         }
@@ -226,18 +329,48 @@ class ApmClient {
         }
     }
     metadataLine() {
-        return JSON.stringify({
-            metadata: {
-                service: {
-                    name: this.serviceName,
-                    environment: 'ci',
-                    agent: {
-                        name: 'ci-apm-trace',
-                        version: package_json_1.default.version,
-                    },
-                },
+        const service = this.compact({
+            name: this.serviceName,
+            version: this.serviceVersion,
+            environment: this.serviceEnvironment,
+            node: this.serviceNode ? { configured_name: this.serviceNode } : undefined,
+            agent: {
+                name: 'ci-apm-trace',
+                version: package_json_1.default.version,
+                ephemeral_id: this.ephemeralId,
+            },
+            language: {
+                name: 'javascript',
+                version: process.versions.node,
+            },
+            runtime: {
+                name: 'node',
+                version: process.versions.node,
             },
         });
+        const metadata = this.compact({
+            service,
+            labels: Object.keys(this.globalLabels).length > 0 ? this.globalLabels : undefined,
+            system: {
+                architecture: process.arch,
+                hostname: os.hostname(),
+                platform: process.platform,
+            },
+            process: {
+                pid: process.pid,
+                title: process.title,
+            },
+        });
+        return JSON.stringify({ metadata });
+    }
+    compact(obj) {
+        const out = {};
+        for (const [key, value] of Object.entries(obj)) {
+            if (value !== undefined && value !== null) {
+                out[key] = value;
+            }
+        }
+        return out;
     }
     logServerResponse(status, data) {
         if (status === undefined) {
@@ -254,7 +387,6 @@ class ApmClient {
                     span: {
                         id: span.id,
                         trace_id: t.traceId,
-                        transaction_id: t.id,
                         parent_id: t.id,
                         name: span.name,
                         type: span.type,
@@ -270,6 +402,7 @@ class ApmClient {
                         id: err.id,
                         trace_id: t.traceId,
                         transaction_id: t.id,
+                        parent_id: t.id,
                         timestamp: err.timestampUs,
                         exception: {
                             message: err.message,

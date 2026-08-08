@@ -46,6 +46,8 @@ async function run() {
         parentId: transactionId,
         name: 'Main Task Execution',
         type: 'task',
+        subtype: 'azure-pipelines',
+        action: 'execute',
         startMs: Date.now(),
         tags: (0, azure_common_1.pipelineTags)(),
     });

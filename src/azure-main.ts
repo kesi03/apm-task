@@ -14,6 +14,8 @@ async function run(): Promise<void> {
     parentId: transactionId,
     name: 'Main Task Execution',
     type: 'task',
+    subtype: 'azure-pipelines',
+    action: 'execute',
     startMs: Date.now(),
     tags: pipelineTags(),
   })

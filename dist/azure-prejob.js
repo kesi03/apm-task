@@ -52,6 +52,8 @@ async function run() {
         parentId: transactionId,
         name: 'Job Start',
         type: 'job',
+        subtype: 'azure-pipelines',
+        action: 'start',
         startMs,
         tags: (0, azure_common_1.pipelineTags)(),
     });

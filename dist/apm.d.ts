@@ -3,6 +3,10 @@ export interface ApmInitOptions {
     secretToken?: string;
     apiKey?: string;
     serviceName?: string;
+    serviceVersion?: string;
+    serviceNode?: string;
+    serviceEnvironment?: string;
+    globalLabels?: Record<string, string | number | boolean>;
     debug?: boolean;
 }
 export interface Transaction {
@@ -14,15 +18,24 @@ export interface Span {
     end(): void;
 }
 export type EventOutcome = 'success' | 'failure' | 'unknown';
+export interface UserContext {
+    id?: string;
+    email?: string;
+    username?: string;
+    domain?: string;
+}
 export interface SpanEventOptions {
     traceId: string;
     spanId?: string;
     parentId: string;
     name: string;
     type: string;
+    subtype?: string;
+    action?: string;
     startMs: number;
     durationMs?: number;
     outcome?: EventOutcome;
+    stacktrace?: string;
     tags?: Record<string, string>;
 }
 export interface TransactionEventOptions {
@@ -35,20 +48,48 @@ export interface TransactionEventOptions {
     result: string;
     outcome: EventOutcome;
     spanCount?: number;
+    parentId?: string;
+    user?: UserContext;
+    custom?: Record<string, unknown>;
+    session?: {
+        id: string;
+        sequence?: number;
+    };
     tags?: Record<string, string>;
 }
 export interface ErrorEventOptions {
-    traceId: string;
+    traceId?: string;
     transactionId?: string;
+    parentId?: string;
     timestampMs?: number;
     message: string;
     type?: string;
+    code?: string;
+    module?: string;
+    culprit?: string;
+    handled?: boolean;
     stack?: string;
+    transaction?: {
+        name?: string;
+        type?: string;
+        sampled?: boolean;
+    };
+    user?: UserContext;
+    custom?: Record<string, unknown>;
     tags?: Record<string, string>;
+}
+export interface MetricSample {
+    value: number;
+    unit?: string;
+    type?: string;
 }
 export interface MetricEventOptions {
     timestampMs?: number;
-    samples: Record<string, number>;
+    samples: Record<string, number | MetricSample>;
+    transaction?: {
+        name?: string;
+        type?: string;
+    };
     tags?: Record<string, string>;
 }
 export interface ApmAgent {

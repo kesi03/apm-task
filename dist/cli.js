@@ -7,12 +7,46 @@
 
 "use strict";
 
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.apm = void 0;
 exports.initApm = initApm;
+const os = __importStar(__nccwpck_require__(857));
 const axios_1 = __importDefault(__nccwpck_require__(7269));
 const crypto_1 = __nccwpck_require__(6982);
 const package_json_1 = __importDefault(__nccwpck_require__(8330));
@@ -50,6 +84,11 @@ class ApmClient {
         this.secretToken = nonEmpty(options.secretToken ?? process.env.ELASTIC_APM_SECRET_TOKEN);
         this.apiKey = nonEmpty(options.apiKey ?? process.env.ELASTIC_APM_API_KEY);
         this.serviceName = nonEmpty(options.serviceName ?? process.env.ELASTIC_APM_SERVICE_NAME) ?? 'ci-apm-trace';
+        this.serviceVersion = nonEmpty(options.serviceVersion ?? process.env.ELASTIC_APM_SERVICE_VERSION);
+        this.serviceNode = nonEmpty(options.serviceNode);
+        this.serviceEnvironment = nonEmpty(options.serviceEnvironment ?? process.env.ELASTIC_APM_ENVIRONMENT) ?? 'ci';
+        this.globalLabels = options.globalLabels ?? {};
+        this.ephemeralId = randomId();
         const envDebug = (process.env.ELASTIC_APM_DEBUG ?? '').toLowerCase();
         this.debug = Boolean(options.debug ?? (envDebug === 'true' || envDebug === '1'));
     }
@@ -141,7 +180,20 @@ class ApmClient {
             timestamp: event.startMs * 1000,
             duration: roundMs(event.durationMs ?? 0),
             outcome: event.outcome ?? 'success',
+            sample_rate: 1,
         };
+        if (event.subtype) {
+            span.subtype = event.subtype;
+        }
+        if (event.action) {
+            span.action = event.action;
+        }
+        if (event.stacktrace) {
+            const frames = parseStack(event.stacktrace);
+            if (frames.length > 0) {
+                span.stacktrace = frames;
+            }
+        }
         if (event.tags && Object.keys(event.tags).length > 0) {
             span.context = { tags: event.tags };
         }
@@ -158,18 +210,38 @@ class ApmClient {
             timestamp: event.startMs * 1000,
             duration: roundMs(event.durationMs),
             sampled: true,
+            sample_rate: 1,
             span_count: { started: event.spanCount ?? 0 },
         };
+        if (event.parentId) {
+            transaction.parent_id = event.parentId;
+        }
+        if (event.session && (event.session.id || event.session.sequence !== undefined)) {
+            transaction.session = this.compact({ ...event.session });
+        }
+        const context = {};
         if (event.tags && Object.keys(event.tags).length > 0) {
-            transaction.context = { tags: event.tags };
+            context.tags = event.tags;
+        }
+        if (event.user) {
+            context.user = this.compact({ ...event.user });
+        }
+        if (event.custom && Object.keys(event.custom).length > 0) {
+            context.custom = this.compact({ ...event.custom });
+        }
+        if (Object.keys(context).length > 0) {
+            transaction.context = context;
         }
         await this.post(`${this.metadataLine()}\n${JSON.stringify({ transaction })}\n`);
     }
     async sendError(event) {
-        const exception = {
+        const exception = this.compact({
             message: event.message,
             type: event.type ?? 'Error',
-        };
+            handled: event.handled ?? true,
+            code: event.code,
+            module: event.module,
+        });
         if (event.stack) {
             const frames = parseStack(event.stack);
             if (frames.length > 0) {
@@ -178,27 +250,58 @@ class ApmClient {
         }
         const error = {
             id: (0, crypto_1.randomBytes)(16).toString('hex'),
-            trace_id: event.traceId,
             timestamp: (event.timestampMs ?? Date.now()) * 1000,
             exception,
         };
+        if (event.traceId) {
+            error.trace_id = event.traceId;
+        }
         if (event.transactionId) {
             error.transaction_id = event.transactionId;
         }
+        error.parent_id = event.parentId ?? event.transactionId ?? (event.traceId ? event.traceId : undefined);
+        if (error.parent_id === undefined) {
+            delete error.parent_id;
+        }
+        if (event.culprit) {
+            error.culprit = event.culprit;
+        }
+        if (event.transaction) {
+            const transaction = this.compact({ ...event.transaction });
+            if (Object.keys(transaction).length > 0) {
+                error.transaction = transaction;
+            }
+        }
+        const context = {};
         if (event.tags && Object.keys(event.tags).length > 0) {
-            error.context = { tags: event.tags };
+            context.tags = event.tags;
+        }
+        if (event.user) {
+            context.user = this.compact({ ...event.user });
+        }
+        if (event.custom && Object.keys(event.custom).length > 0) {
+            context.custom = this.compact({ ...event.custom });
+        }
+        if (Object.keys(context).length > 0) {
+            error.context = context;
         }
         await this.post(`${this.metadataLine()}\n${JSON.stringify({ error })}\n`);
     }
     async sendMetric(event) {
         const samples = {};
-        for (const [name, value] of Object.entries(event.samples)) {
-            samples[name] = { value };
+        for (const [name, sample] of Object.entries(event.samples)) {
+            samples[name] = typeof sample === 'number' ? { value: sample } : this.compact({ ...sample });
         }
         const metricset = {
             samples,
             timestamp: (event.timestampMs ?? Date.now()) * 1000,
         };
+        if (event.transaction) {
+            const transaction = this.compact({ ...event.transaction });
+            if (Object.keys(transaction).length > 0) {
+                metricset.transaction = transaction;
+            }
+        }
         if (event.tags && Object.keys(event.tags).length > 0) {
             metricset.tags = event.tags;
         }
@@ -234,18 +337,48 @@ class ApmClient {
         }
     }
     metadataLine() {
-        return JSON.stringify({
-            metadata: {
-                service: {
-                    name: this.serviceName,
-                    environment: 'ci',
-                    agent: {
-                        name: 'ci-apm-trace',
-                        version: package_json_1.default.version,
-                    },
-                },
+        const service = this.compact({
+            name: this.serviceName,
+            version: this.serviceVersion,
+            environment: this.serviceEnvironment,
+            node: this.serviceNode ? { configured_name: this.serviceNode } : undefined,
+            agent: {
+                name: 'ci-apm-trace',
+                version: package_json_1.default.version,
+                ephemeral_id: this.ephemeralId,
+            },
+            language: {
+                name: 'javascript',
+                version: process.versions.node,
+            },
+            runtime: {
+                name: 'node',
+                version: process.versions.node,
             },
         });
+        const metadata = this.compact({
+            service,
+            labels: Object.keys(this.globalLabels).length > 0 ? this.globalLabels : undefined,
+            system: {
+                architecture: process.arch,
+                hostname: os.hostname(),
+                platform: process.platform,
+            },
+            process: {
+                pid: process.pid,
+                title: process.title,
+            },
+        });
+        return JSON.stringify({ metadata });
+    }
+    compact(obj) {
+        const out = {};
+        for (const [key, value] of Object.entries(obj)) {
+            if (value !== undefined && value !== null) {
+                out[key] = value;
+            }
+        }
+        return out;
     }
     logServerResponse(status, data) {
         if (status === undefined) {
@@ -262,7 +395,6 @@ class ApmClient {
                     span: {
                         id: span.id,
                         trace_id: t.traceId,
-                        transaction_id: t.id,
                         parent_id: t.id,
                         name: span.name,
                         type: span.type,
@@ -278,6 +410,7 @@ class ApmClient {
                         id: err.id,
                         trace_id: t.traceId,
                         transaction_id: t.id,
+                        parent_id: t.id,
                         timestamp: err.timestampUs,
                         exception: {
                             message: err.message,
@@ -3507,7 +3640,7 @@ exports.colors = [6, 2, 3, 4, 5, 1];
 try {
 	// Optional dependency (as in, doesn't need to be installed, NOT like optionalDependencies in package.json)
 	// eslint-disable-next-line import/no-extraneous-dependencies
-	const supportsColor = __nccwpck_require__(75);
+	const supportsColor = __nccwpck_require__(2438);
 
 	if (supportsColor && (supportsColor.stderr || supportsColor).level >= 2) {
 		exports.colors = [
@@ -7298,10 +7431,161 @@ module.exports = (string, columns, options) => {
 
 /***/ }),
 
-/***/ 75:
+/***/ 2745:
 /***/ ((module) => {
 
-module.exports = eval("require")("supports-color");
+"use strict";
+
+
+module.exports = (flag, argv = process.argv) => {
+	const prefix = flag.startsWith('-') ? '' : (flag.length === 1 ? '-' : '--');
+	const position = argv.indexOf(prefix + flag);
+	const terminatorPosition = argv.indexOf('--');
+	return position !== -1 && (terminatorPosition === -1 || position < terminatorPosition);
+};
+
+
+/***/ }),
+
+/***/ 2438:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+const os = __nccwpck_require__(857);
+const tty = __nccwpck_require__(2018);
+const hasFlag = __nccwpck_require__(2745);
+
+const {env} = process;
+
+let forceColor;
+if (hasFlag('no-color') ||
+	hasFlag('no-colors') ||
+	hasFlag('color=false') ||
+	hasFlag('color=never')) {
+	forceColor = 0;
+} else if (hasFlag('color') ||
+	hasFlag('colors') ||
+	hasFlag('color=true') ||
+	hasFlag('color=always')) {
+	forceColor = 1;
+}
+
+if ('FORCE_COLOR' in env) {
+	if (env.FORCE_COLOR === 'true') {
+		forceColor = 1;
+	} else if (env.FORCE_COLOR === 'false') {
+		forceColor = 0;
+	} else {
+		forceColor = env.FORCE_COLOR.length === 0 ? 1 : Math.min(parseInt(env.FORCE_COLOR, 10), 3);
+	}
+}
+
+function translateLevel(level) {
+	if (level === 0) {
+		return false;
+	}
+
+	return {
+		level,
+		hasBasic: true,
+		has256: level >= 2,
+		has16m: level >= 3
+	};
+}
+
+function supportsColor(haveStream, streamIsTTY) {
+	if (forceColor === 0) {
+		return 0;
+	}
+
+	if (hasFlag('color=16m') ||
+		hasFlag('color=full') ||
+		hasFlag('color=truecolor')) {
+		return 3;
+	}
+
+	if (hasFlag('color=256')) {
+		return 2;
+	}
+
+	if (haveStream && !streamIsTTY && forceColor === undefined) {
+		return 0;
+	}
+
+	const min = forceColor || 0;
+
+	if (env.TERM === 'dumb') {
+		return min;
+	}
+
+	if (process.platform === 'win32') {
+		// Windows 10 build 10586 is the first Windows release that supports 256 colors.
+		// Windows 10 build 14931 is the first release that supports 16m/TrueColor.
+		const osRelease = os.release().split('.');
+		if (
+			Number(osRelease[0]) >= 10 &&
+			Number(osRelease[2]) >= 10586
+		) {
+			return Number(osRelease[2]) >= 14931 ? 3 : 2;
+		}
+
+		return 1;
+	}
+
+	if ('CI' in env) {
+		if (['TRAVIS', 'CIRCLECI', 'APPVEYOR', 'GITLAB_CI', 'GITHUB_ACTIONS', 'BUILDKITE'].some(sign => sign in env) || env.CI_NAME === 'codeship') {
+			return 1;
+		}
+
+		return min;
+	}
+
+	if ('TEAMCITY_VERSION' in env) {
+		return /^(9\.(0*[1-9]\d*)\.|\d{2,}\.)/.test(env.TEAMCITY_VERSION) ? 1 : 0;
+	}
+
+	if (env.COLORTERM === 'truecolor') {
+		return 3;
+	}
+
+	if ('TERM_PROGRAM' in env) {
+		const version = parseInt((env.TERM_PROGRAM_VERSION || '').split('.')[0], 10);
+
+		switch (env.TERM_PROGRAM) {
+			case 'iTerm.app':
+				return version >= 3 ? 3 : 2;
+			case 'Apple_Terminal':
+				return 2;
+			// No default
+		}
+	}
+
+	if (/-256(color)?$/i.test(env.TERM)) {
+		return 2;
+	}
+
+	if (/^screen|^xterm|^vt100|^vt220|^rxvt|color|ansi|cygwin|linux/i.test(env.TERM)) {
+		return 1;
+	}
+
+	if ('COLORTERM' in env) {
+		return 1;
+	}
+
+	return min;
+}
+
+function getSupportLevel(stream) {
+	const level = supportsColor(stream, stream && stream.isTTY);
+	return translateLevel(level);
+}
+
+module.exports = {
+	supportsColor: getSupportLevel,
+	stdout: translateLevel(supportsColor(true, tty.isatty(1))),
+	stderr: translateLevel(supportsColor(true, tty.isatty(2)))
+};
 
 
 /***/ }),
@@ -7397,6 +7681,14 @@ module.exports = require("https");
 
 "use strict";
 module.exports = require("net");
+
+/***/ }),
+
+/***/ 857:
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("os");
 
 /***/ }),
 
@@ -15458,7 +15750,7 @@ module.exports = /*#__PURE__*/JSON.parse('{"application/1d-interleaved-parityfec
 /***/ ((module) => {
 
 "use strict";
-module.exports = /*#__PURE__*/JSON.parse('{"name":"@mockholm/ci-apm-trace","version":"1.1.5","description":"Sends CI pipeline traces to Elastic APM","main":"dist/lifecycle.js","bin":{"ci-apm-trace":"dist/cli.js"},"files":["dist"],"scripts":{"build":"tsc -p tsconfig.json","typecheck":"tsc --noEmit","start":"node dist/cli.js","icons":"node scripts/gen-icon.js","bundle:github":"node scripts/bundle-github.js","package:azure":"node scripts/package-azure.js"},"engines":{"node":">=18"},"dependencies":{"axios":"^1.19.0","azure-pipelines-task-lib":"^5.0.0","yargs":"^17.7.2"},"devDependencies":{"@types/node":"^20.14.0","@types/yargs":"^17.0.32","@vercel/ncc":"^0.44.1","tfx-cli":"^0.23.4","typescript":"^5.5.0"}}');
+module.exports = /*#__PURE__*/JSON.parse('{"name":"@mockholm/ci-apm-trace","version":"1.1.6","description":"Sends CI pipeline traces to Elastic APM","main":"dist/lifecycle.js","bin":{"ci-apm-trace":"dist/cli.js"},"files":["dist"],"scripts":{"build":"tsc -p tsconfig.json","typecheck":"tsc --noEmit","start":"node dist/cli.js","icons":"node scripts/gen-icon.js","bundle:github":"node scripts/bundle-github.js","package:azure":"node scripts/package-azure.js"},"engines":{"node":">=18"},"dependencies":{"axios":"^1.19.0","azure-pipelines-task-lib":"^5.0.0","yargs":"^17.7.2"},"devDependencies":{"@types/node":"^20.14.0","@types/yargs":"^17.0.32","@vercel/ncc":"^0.44.1","tfx-cli":"^0.23.4","typescript":"^5.5.0"}}');
 
 /***/ })
 
