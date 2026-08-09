@@ -151,7 +151,7 @@ tasks:
     desc: Publish the Azure DevOps task extension to the Marketplace
     deps: [package:azure]
     cmds:
-      - npx tfx extension publish --manifest-globs vss-extension.json --token {{.AZURE_DEVOPS_TOKEN}}
+      - npx tfx extension publish --manifest-globs vss-extension.json --token {{.AZURE_DEVOPS_TOKEN}} --no-wait-validation
 
   bundle:github:
     desc: Bundle the GitHub Action into a self-contained dist/cli.js via ncc

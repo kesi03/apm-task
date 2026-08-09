@@ -570,7 +570,8 @@ The package script prunes test fixtures from `node_modules` (they contain paths 
 npx tfx extension publish \
   --manifest-globs vss-extension.json \
   --token "$AZURE_DEVOPS_EXTENSION_PAT" \
-  --output-path out
+  --output-path out \
+  --no-wait-validation
 ```
 
 To publish without waiting for the Marketplace's validation result (useful in CI), pass `--no-wait-validation` — the workflow already does this.
