@@ -984,7 +984,7 @@ async function main() {
         'ci_platform': {
             type: 'string',
             default: process.env.APM_CI_PLATFORM,
-            description: 'CI platform profile to use (github-action, azure-devops, team-city, jenkins, docker, k8s, task)',
+            description: 'CI platform profile to use (npm, github-action, azure-devops, team-city, jenkins, docker, k8s, task)',
         },
         fail: {
             type: 'boolean',
@@ -1411,9 +1411,11 @@ const docker_1 = __importDefault(__nccwpck_require__(970));
 const github_action_1 = __importDefault(__nccwpck_require__(1216));
 const jenkins_1 = __importDefault(__nccwpck_require__(2806));
 const k8s_1 = __importDefault(__nccwpck_require__(8200));
+const npm_1 = __importDefault(__nccwpck_require__(1193));
 const task_1 = __importDefault(__nccwpck_require__(1535));
 const team_city_1 = __importDefault(__nccwpck_require__(271));
 exports.profiles = {
+    [npm_1.default.name]: npm_1.default,
     [github_action_1.default.name]: github_action_1.default,
     [azure_devops_1.default.name]: azure_devops_1.default,
     [team_city_1.default.name]: team_city_1.default,
@@ -1426,7 +1428,7 @@ function getProfile(platform) {
     if (platform && exports.profiles[platform]) {
         return exports.profiles[platform];
     }
-    return task_1.default;
+    return npm_1.default;
 }
 //# sourceMappingURL=index.js.map
 
@@ -1592,6 +1594,122 @@ exports.k8sProfile = {
 };
 exports["default"] = exports.k8sProfile;
 //# sourceMappingURL=k8s.js.map
+
+/***/ }),
+
+/***/ 1193:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.npmProfile = void 0;
+const common_1 = __nccwpck_require__(8663);
+function npmVersion() {
+    const userAgent = process.env.npm_config_user_agent;
+    if (userAgent) {
+        const match = userAgent.match(/^([^\s/]+)\/([^\s]+)/);
+        if (match) {
+            return `${match[1]}/${match[2]}`;
+        }
+    }
+    return userAgent;
+}
+exports.npmProfile = {
+    name: 'npm',
+    applyEnv(env) {
+        const set = (key, value) => {
+            if (value) {
+                env[key] = value;
+            }
+        };
+        set('BUILD_ID', process.env.CI_PIPELINE_ID || process.env.CI_RUN_ID || process.env.CI_JOB_ID || process.env.npm_lifecycle_event);
+        set('BUILD_NUMBER', process.env.CI_RUN_NUMBER || process.env.CI_PIPELINE_RUN_NUMBER);
+        set('BUILD_BRANCH', process.env.CI_COMMIT_BRANCH);
+        set('BUILD_COMMIT', process.env.CI_COMMIT_SHA);
+        set('BUILD_REPO', process.env.CI_REPOSITORY);
+        set('BUILD_REPO_URI', process.env.CI_REPOSITORY_URL);
+        set('BUILD_URL', process.env.CI_PIPELINE_URL || process.env.CI_JOB_URL);
+        set('BUILD_REF', process.env.CI_COMMIT_BRANCH);
+        set('BUILD_DEFINITION_NAME', process.env.CI_PIPELINE_NAME || process.env.npm_package_name);
+        set('JOB_ID', process.env.CI_JOB_ID || process.env.CI_RUN_ID);
+        set('JOB_NAME', process.env.CI_JOB_NAME || process.env.npm_lifecycle_event);
+        set('JOB_STATUS', process.env.CI_JOB_STATUS);
+        set('BUILD_REQUESTED_FOR', process.env.CI_TRIGGERING_ACTOR);
+        set('AGENT_NAME', process.env.CI_RUNNER_NAME || process.env.RUNNER_NAME);
+        set('RUNNER_OS', process.env.CI_RUNNER_OS);
+        set('RUNNER_ARCH', process.env.CI_RUNNER_ARCH);
+    },
+    pipelineName() {
+        return process.env.npm_package_name || process.env.CI_PIPELINE_NAME || 'npm';
+    },
+    pipelineTags() {
+        const branch = process.env.BUILD_BRANCH || process.env.CI_COMMIT_BRANCH;
+        const commit = process.env.BUILD_COMMIT || process.env.CI_COMMIT_SHA;
+        const repo = process.env.BUILD_REPO || process.env.CI_REPOSITORY;
+        const buildId = process.env.BUILD_ID;
+        const buildNumber = process.env.BUILD_NUMBER;
+        return (0, common_1.pickStrings)({
+            definition_name: process.env.BUILD_DEFINITION_NAME || process.env.CI_PIPELINE_NAME || process.env.npm_package_name,
+            package_name: process.env.npm_package_name,
+            package_version: process.env.npm_package_version,
+            build_id: buildId,
+            build_number: buildNumber,
+            branch,
+            commit,
+            repo,
+            ci_provider: 'npm',
+            runner_os: process.env.RUNNER_OS,
+            runner_arch: process.env.RUNNER_ARCH,
+            'ci.pipeline.id': process.env.CI_PIPELINE_ID || buildId,
+            'ci.pipeline.name': process.env.CI_PIPELINE_NAME || process.env.npm_package_name,
+            'ci.pipeline.run.id': process.env.CI_RUN_ID || buildId,
+            'ci.pipeline.run.number': process.env.CI_RUN_NUMBER || buildNumber,
+            'ci.pipeline.run.url': process.env.BUILD_URL || process.env.CI_PIPELINE_URL,
+            'ci.pipeline.run.user': process.env.BUILD_REQUESTED_FOR || process.env.CI_TRIGGERING_ACTOR,
+            'ci.pipeline.run.result': process.env.JOB_STATUS || process.env.CI_JOB_STATUS,
+            'ci.pipeline.agent.name': process.env.AGENT_NAME || process.env.CI_RUNNER_NAME,
+            'ci.job.id': process.env.CI_JOB_ID || buildId,
+            'ci.job.name': process.env.CI_JOB_NAME || process.env.npm_lifecycle_event,
+            'ci.job.status': process.env.JOB_STATUS || process.env.CI_JOB_STATUS,
+            'ci.step.name': 'ci-apm-trace',
+            'ci.build.ref': branch,
+            'ci.build.commit': commit,
+            'ci.build.repo': repo,
+            'vcs.repository.url': process.env.BUILD_REPO_URI || process.env.CI_REPOSITORY_URL,
+            'vcs.ref.head.name': process.env.BUILD_REF || branch,
+            'vcs.commit.id': commit,
+        });
+    },
+    pipelineCustom() {
+        return (0, common_1.pickValues)({
+            provider: 'npm',
+            package_name: process.env.npm_package_name,
+            package_version: process.env.npm_package_version,
+            lifecycle_event: process.env.npm_lifecycle_event,
+            lifecycle_script: process.env.npm_lifecycle_script,
+            npm_version: npmVersion(),
+            node_version: process.env.NODE_VERSION || process.version,
+            node_execpath: process.env.npm_node_execpath,
+            npm_execpath: process.env.npm_execpath,
+            registry: process.env.npm_config_registry,
+            cwd: process.env.INIT_CWD,
+            definition_id: process.env.CI_PIPELINE_ID,
+            definition_name: process.env.CI_PIPELINE_NAME,
+            build_id: process.env.BUILD_ID,
+            build_number: process.env.BUILD_NUMBER,
+            build_url: process.env.BUILD_URL || process.env.CI_PIPELINE_URL,
+            job_id: process.env.JOB_ID || process.env.CI_JOB_ID,
+            job_name: process.env.JOB_NAME || process.env.CI_JOB_NAME,
+            agent_name: process.env.AGENT_NAME || process.env.CI_RUNNER_NAME,
+            repo: process.env.BUILD_REPO || process.env.CI_REPOSITORY,
+            branch: process.env.BUILD_BRANCH || process.env.CI_COMMIT_BRANCH,
+            commit: process.env.BUILD_COMMIT || process.env.CI_COMMIT_SHA,
+        });
+    },
+};
+exports["default"] = exports.npmProfile;
+//# sourceMappingURL=npm.js.map
 
 /***/ }),
 
@@ -16882,7 +17000,7 @@ module.exports = /*#__PURE__*/JSON.parse('{"application/1d-interleaved-parityfec
 /***/ ((module) => {
 
 "use strict";
-module.exports = /*#__PURE__*/JSON.parse('{"name":"@mockholm/ci-apm-trace","version":"1.1.13","description":"Sends CI pipeline traces to Elastic APM","main":"dist/lifecycle.js","bin":{"ci-apm-trace":"dist/cli.js"},"files":["dist"],"scripts":{"build":"tsc -p tsconfig.json","typecheck":"tsc --noEmit","start":"node dist/cli.js","icons":"node scripts/gen-icon.js","bundle:github":"node scripts/bundle-github.js","package:azure":"node scripts/package-azure.js"},"engines":{"node":">=18"},"dependencies":{"axios":"^1.19.0","azure-pipelines-task-lib":"^5.0.0","yargs":"^17.7.2"},"devDependencies":{"@types/node":"^20.14.0","@types/yargs":"^17.0.32","@vercel/ncc":"^0.44.1","tfx-cli":"^0.23.4","typescript":"^5.5.0"}}');
+module.exports = /*#__PURE__*/JSON.parse('{"name":"@mockholm/ci-apm-trace","version":"1.1.13","description":"Sends CI pipeline traces to Elastic APM","main":"dist/lifecycle.js","bin":{"ci-apm-trace":"dist/cli.js"},"files":["dist"],"scripts":{"build":"tsc -p tsconfig.json","typecheck":"tsc --noEmit","start":"node dist/cli.js","cli":"node dist/cli.js","cli:pre":"node dist/cli.js pre","cli:main":"node dist/cli.js main","cli:post":"node dist/cli.js post","icons":"node scripts/gen-icon.js","bundle:github":"node scripts/bundle-github.js","package:azure":"node scripts/package-azure.js"},"engines":{"node":">=18"},"dependencies":{"axios":"^1.19.0","azure-pipelines-task-lib":"^5.0.0","yargs":"^17.7.2"},"devDependencies":{"@types/node":"^20.14.0","@types/yargs":"^17.0.32","@vercel/ncc":"^0.44.1","tfx-cli":"^0.23.4","typescript":"^5.5.0"}}');
 
 /***/ })
 

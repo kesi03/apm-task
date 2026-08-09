@@ -1,0 +1,74 @@
+name: Client via npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      trace-name:
+        description: 'Name of the trace to send (shown in APM)'
+        required: false
+        default: 'npm'
+      fail:
+        description: 'End the trace as a failure (for testing)'
+        required: false
+        type: boolean
+        default: false
+      debug:
+        description: 'Print the APM server responses (status + body)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  npm:
+    name: Run the client with the npm profile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: npm ci
+
+      - name: Start trace (pre)
+        run: |
+          node dist/cli.js pre \
+            --trace-name "${{ inputs.trace-name }}" \
+            --build-id "${{ github.run_id }}" \
+            --build-number "${{ github.run_number }}" \
+            --branch "${{ github.ref_name }}" \
+            --commit "${{ github.sha }}" \
+            --repo "${{ github.repository }}" \
+            --ci_platform npm | tee apm.env
+          grep '^export APM_' apm.env | sed 's/^export //' >> "$GITHUB_ENV"
+        env:
+          ELASTIC_APM_SERVER_URL: ${{ vars.ELASTIC_APM_SERVER_URL }}
+          ELASTIC_APM_SECRET_TOKEN: ${{ secrets.ELASTIC_APM_SECRET_TOKEN }}
+          ELASTIC_APM_DEBUG: ${{ inputs.debug }}
+
+      - name: Main work
+        run: npm run typecheck
+
+      - name: Record main task span
+        run: node dist/cli.js main --trace-name "${{ inputs.trace-name }}" --ci_platform npm
+        env:
+          ELASTIC_APM_SERVER_URL: ${{ vars.ELASTIC_APM_SERVER_URL }}
+          ELASTIC_APM_SECRET_TOKEN: ${{ secrets.ELASTIC_APM_SECRET_TOKEN }}
+          ELASTIC_APM_DEBUG: ${{ inputs.debug }}
+
+      - name: End trace (post)
+        run: node dist/cli.js post --trace-name "${{ inputs.trace-name }}" --ci_platform npm ${{ inputs.fail && '--fail' || '' }}
+        env:
+          ELASTIC_APM_SERVER_URL: ${{ vars.ELASTIC_APM_SERVER_URL }}
+          ELASTIC_APM_SECRET_TOKEN: ${{ secrets.ELASTIC_APM_SECRET_TOKEN }}
+          ELASTIC_APM_DEBUG: ${{ inputs.debug }}
+
+      - name: Where to look
+        if: always()
+        run: |
+          echo "Open your Elastic APM app and look for the transaction name '${{ inputs.trace-name }}' (service 'npm')."
+          echo "View the run here: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

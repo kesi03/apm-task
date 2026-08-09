@@ -4,6 +4,8 @@ vars:
   IMAGE: ci-apm-trace
   TRACE_NAME: my-pipeline
   BUILD_ID: '1'
+  PROFILE: npm
+  NAMESPACE: default
 
 tasks:
   default:
@@ -40,6 +42,30 @@ tasks:
     cmds:
       - node dist/cli.js --trace-name {{.TRACE_NAME}} --build-id {{.BUILD_ID}}
 
+  cli:
+    desc: Run the one-shot CLI client with the {{.PROFILE}} profile
+    deps: [build]
+    cmds:
+      - node dist/cli.js --trace-name {{.TRACE_NAME}} --build-id {{.BUILD_ID}} --ci_platform {{.PROFILE}}
+
+  pre:
+    desc: Start a trace (pre) - prints APM_* env vars to hand off to main/post ({{.PROFILE}} profile)
+    deps: [build]
+    cmds:
+      - node dist/cli.js pre --trace-name {{.TRACE_NAME}} --ci_platform {{.PROFILE}}
+
+  main:
+    desc: Record the main task execution span ({{.PROFILE}} profile)
+    deps: [build]
+    cmds:
+      - node dist/cli.js main --trace-name {{.TRACE_NAME}} --ci_platform {{.PROFILE}}
+
+  post:
+    desc: End the trace (post) - transaction, error, and metrics ({{.PROFILE}} profile)
+    deps: [build]
+    cmds:
+      - node dist/cli.js post --trace-name {{.TRACE_NAME}} --ci_platform {{.PROFILE}}
+
   test:
     desc: Smoke test CLI success and failure exit codes
     deps: [build]
@@ -56,6 +82,70 @@ tasks:
     desc: Build the Docker image
     cmds:
       - docker build -t {{.IMAGE}} .
+
+  cli:docker:
+    desc: Run the one-shot CLI client in the Docker image (docker profile)
+    deps: [docker:build]
+    cmds:
+      - docker run --rm -e ELASTIC_APM_SERVER_URL={{.ELASTIC_APM_SERVER_URL}} -e ELASTIC_APM_SECRET_TOKEN={{.ELASTIC_APM_SECRET_TOKEN}} -e ELASTIC_APM_API_KEY={{.ELASTIC_APM_API_KEY}} {{.IMAGE}} --trace-name {{.TRACE_NAME}} --build-id {{.BUILD_ID}} --ci_platform docker
+
+  pre:docker:
+    desc: Start a trace inside Docker (docker profile) - prints APM_* env vars to hand off to main/post
+    deps: [docker:build]
+    cmds:
+      - docker run --rm -e ELASTIC_APM_SERVER_URL={{.ELASTIC_APM_SERVER_URL}} -e ELASTIC_APM_SECRET_TOKEN={{.ELASTIC_APM_SECRET_TOKEN}} -e ELASTIC_APM_API_KEY={{.ELASTIC_APM_API_KEY}} {{.IMAGE}} pre --trace-name {{.TRACE_NAME}} --ci_platform docker
+
+  main:docker:
+    desc: Record the main task execution span inside Docker (docker profile)
+    deps: [docker:build]
+    cmds:
+      - docker run --rm -e ELASTIC_APM_SERVER_URL={{.ELASTIC_APM_SERVER_URL}} -e ELASTIC_APM_SECRET_TOKEN={{.ELASTIC_APM_SECRET_TOKEN}} -e ELASTIC_APM_API_KEY={{.ELASTIC_APM_API_KEY}} -e APM_TRACE_ID={{.APM_TRACE_ID}} -e APM_TRANSACTION_ID={{.APM_TRANSACTION_ID}} -e APM_SPAN_ID={{.APM_SPAN_ID}} -e APM_JOB_START_MS={{.APM_JOB_START_MS}} {{.IMAGE}} main --trace-name {{.TRACE_NAME}} --ci_platform docker
+
+  post:docker:
+    desc: End the trace inside Docker (docker profile)
+    deps: [docker:build]
+    cmds:
+      - docker run --rm -e ELASTIC_APM_SERVER_URL={{.ELASTIC_APM_SERVER_URL}} -e ELASTIC_APM_SECRET_TOKEN={{.ELASTIC_APM_SECRET_TOKEN}} -e ELASTIC_APM_API_KEY={{.ELASTIC_APM_API_KEY}} -e APM_TRACE_ID={{.APM_TRACE_ID}} -e APM_TRANSACTION_ID={{.APM_TRANSACTION_ID}} -e APM_SPAN_ID={{.APM_SPAN_ID}} -e APM_JOB_START_MS={{.APM_JOB_START_MS}} {{.IMAGE}} post --trace-name {{.TRACE_NAME}} --ci_platform docker
+
+  k8s:apply:
+    desc: Create the k8s Job from k8s.yml (runs pre -> main -> post with the k8s profile)
+    deps: [docker:build]
+    cmds:
+      - kubectl apply -f k8s.yml -n {{.NAMESPACE}}
+
+  k8s:logs:
+    desc: Follow the logs of the k8s Job
+    cmds:
+      - kubectl logs job/ci-apm-trace -n {{.NAMESPACE}} -f
+
+  k8s:delete:
+    desc: Delete the k8s Job
+    cmds:
+      - kubectl delete -f k8s.yml -n {{.NAMESPACE}}
+
+  cli:k8s:
+    desc: Run the one-shot CLI client in a Kubernetes Pod (k8s profile)
+    deps: [docker:build]
+    cmds:
+      - kubectl run ci-apm-trace-cli --image={{.IMAGE}} --image-pull-policy=Never --restart=Never -n {{.NAMESPACE}} --env=APM_CI_PLATFORM=k8s --env=ELASTIC_APM_SERVER_URL={{.ELASTIC_APM_SERVER_URL}} --env=ELASTIC_APM_SECRET_TOKEN={{.ELASTIC_APM_SECRET_TOKEN}} -- node dist/cli.js --trace-name {{.TRACE_NAME}} --build-id {{.BUILD_ID}} --ci_platform k8s
+
+  pre:k8s:
+    desc: Start a trace in a Kubernetes Pod (k8s profile) - prints APM_* env vars to hand off to main/post
+    deps: [docker:build]
+    cmds:
+      - kubectl run ci-apm-trace-pre --image={{.IMAGE}} --image-pull-policy=Never --restart=Never -n {{.NAMESPACE}} --env=APM_CI_PLATFORM=k8s --env=ELASTIC_APM_SERVER_URL={{.ELASTIC_APM_SERVER_URL}} --env=ELASTIC_APM_SECRET_TOKEN={{.ELASTIC_APM_SECRET_TOKEN}} -- node dist/cli.js pre --trace-name {{.TRACE_NAME}} --ci_platform k8s
+
+  main:k8s:
+    desc: Record the main task execution span in a Kubernetes Pod (k8s profile)
+    deps: [docker:build]
+    cmds:
+      - kubectl run ci-apm-trace-main --image={{.IMAGE}} --image-pull-policy=Never --restart=Never -n {{.NAMESPACE}} --env=APM_CI_PLATFORM=k8s --env=ELASTIC_APM_SERVER_URL={{.ELASTIC_APM_SERVER_URL}} --env=ELASTIC_APM_SECRET_TOKEN={{.ELASTIC_APM_SECRET_TOKEN}} --env=APM_TRACE_ID={{.APM_TRACE_ID}} --env=APM_TRANSACTION_ID={{.APM_TRANSACTION_ID}} --env=APM_SPAN_ID={{.APM_SPAN_ID}} --env=APM_JOB_START_MS={{.APM_JOB_START_MS}} -- node dist/cli.js main --trace-name {{.TRACE_NAME}} --ci_platform k8s
+
+  post:k8s:
+    desc: End the trace in a Kubernetes Pod (k8s profile)
+    deps: [docker:build]
+    cmds:
+      - kubectl run ci-apm-trace-post --image={{.IMAGE}} --image-pull-policy=Never --restart=Never -n {{.NAMESPACE}} --env=APM_CI_PLATFORM=k8s --env=ELASTIC_APM_SERVER_URL={{.ELASTIC_APM_SERVER_URL}} --env=ELASTIC_APM_SECRET_TOKEN={{.ELASTIC_APM_SECRET_TOKEN}} --env=APM_TRACE_ID={{.APM_TRACE_ID}} --env=APM_TRANSACTION_ID={{.APM_TRANSACTION_ID}} --env=APM_SPAN_ID={{.APM_SPAN_ID}} --env=APM_JOB_START_MS={{.APM_JOB_START_MS}} -- node dist/cli.js post --trace-name {{.TRACE_NAME}} --ci_platform k8s
 
   package:azure:
     desc: Package the Azure DevOps task extension into a .vsix

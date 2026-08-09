@@ -13,6 +13,10 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
     "start": "node dist/cli.js",
+    "cli": "node dist/cli.js",
+    "cli:pre": "node dist/cli.js pre",
+    "cli:main": "node dist/cli.js main",
+    "cli:post": "node dist/cli.js post",
     "icons": "node scripts/gen-icon.js",
     "bundle:github": "node scripts/bundle-github.js",
     "package:azure": "node scripts/package-azure.js"

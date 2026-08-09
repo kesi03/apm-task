@@ -1,0 +1,62 @@
+# Runs the ci-apm-trace client with the task profile (go-task Taskfile).
+#
+# Required pipeline variables:
+#   ELASTIC_APM_SERVER_URL     (plain)    e.g. https://<deployment-id>.apm.<region>.gcp.elastic.cloud:443
+#   ELASTIC_APM_SECRET_TOKEN   (secret)   APM secret token or Elastic API key
+#   traceName                  (plain)    optional, defaults to 'task'
+trigger: none
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  traceName: task
+
+steps:
+  - checkout: self
+
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '20'
+    displayName: 'Install Node.js 20'
+
+  - script: |
+      curl -sL https://taskfile.dev/install.sh | sh
+      echo "##vso[task.prependpath]$(System.DefaultWorkingDirectory)/bin"
+    displayName: 'Install go-task'
+
+  - script: npm ci
+    displayName: 'Install dependencies'
+
+  - script: |
+      task pre PROFILE=task TRACE_NAME="$(traceName)" | tee apm.env
+      grep '^export APM_' apm.env | while IFS='=' read -r k v; do
+        key="${k#export }"
+        echo "##vso[task.setvariable variable=${key}]${v}"
+      done
+    displayName: 'Start trace (pre)'
+    env:
+      ELASTIC_APM_SERVER_URL: $(ELASTIC_APM_SERVER_URL)
+      ELASTIC_APM_SECRET_TOKEN: $(ELASTIC_APM_SECRET_TOKEN)
+      BUILD_ID: $(Build.BuildId)
+      BUILD_NUMBER: $(Build.BuildNumber)
+      BUILD_BRANCH: $(Build.SourceBranchName)
+      BUILD_COMMIT: $(Build.SourceVersion)
+      BUILD_REPO: $(Build.Repository.Name)
+      BUILD_REPO_URI: $(Build.Repository.Uri)
+
+  - script: npm run typecheck
+    displayName: 'Main work'
+
+  - script: task main PROFILE=task TRACE_NAME="$(traceName)"
+    displayName: 'Record main task span'
+    env:
+      ELASTIC_APM_SERVER_URL: $(ELASTIC_APM_SERVER_URL)
+      ELASTIC_APM_SECRET_TOKEN: $(ELASTIC_APM_SECRET_TOKEN)
+
+  - script: task post PROFILE=task TRACE_NAME="$(traceName)"
+    displayName: 'End trace (post)'
+    env:
+      ELASTIC_APM_SERVER_URL: $(ELASTIC_APM_SERVER_URL)
+      ELASTIC_APM_SECRET_TOKEN: $(ELASTIC_APM_SECRET_TOKEN)

@@ -1,0 +1,78 @@
+name: Client via task
+
+on:
+  workflow_dispatch:
+    inputs:
+      trace-name:
+        description: 'Name of the trace to send (shown in APM)'
+        required: false
+        default: 'task'
+      fail:
+        description: 'End the trace as a failure (for testing)'
+        required: false
+        type: boolean
+        default: false
+      debug:
+        description: 'Print the APM server responses (status + body)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  task:
+    name: Run the client with the task profile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install go-task
+        run: |
+          curl -sL https://taskfile.dev/install.sh | sh
+          echo "$PWD/bin" >> "$GITHUB_PATH"
+
+      - run: npm ci
+
+      - name: Start trace (pre)
+        run: |
+          task pre PROFILE=task TRACE_NAME="${{ inputs.trace-name }}" | tee apm.env
+          grep '^export APM_' apm.env | sed 's/^export //' >> "$GITHUB_ENV"
+        env:
+          ELASTIC_APM_SERVER_URL: ${{ vars.ELASTIC_APM_SERVER_URL }}
+          ELASTIC_APM_SECRET_TOKEN: ${{ secrets.ELASTIC_APM_SECRET_TOKEN }}
+          ELASTIC_APM_DEBUG: ${{ inputs.debug }}
+          BUILD_ID: ${{ github.run_id }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          BUILD_BRANCH: ${{ github.ref_name }}
+          BUILD_COMMIT: ${{ github.sha }}
+          BUILD_REPO: ${{ github.repository }}
+
+      - name: Main work
+        run: npm run typecheck
+
+      - name: Record main task span
+        run: task main PROFILE=task TRACE_NAME="${{ inputs.trace-name }}"
+        env:
+          ELASTIC_APM_SERVER_URL: ${{ vars.ELASTIC_APM_SERVER_URL }}
+          ELASTIC_APM_SECRET_TOKEN: ${{ secrets.ELASTIC_APM_SECRET_TOKEN }}
+          ELASTIC_APM_DEBUG: ${{ inputs.debug }}
+
+      - name: End trace (post)
+        run: task post PROFILE=task TRACE_NAME="${{ inputs.trace-name }}"
+        env:
+          ELASTIC_APM_SERVER_URL: ${{ vars.ELASTIC_APM_SERVER_URL }}
+          ELASTIC_APM_SECRET_TOKEN: ${{ secrets.ELASTIC_APM_SECRET_TOKEN }}
+          ELASTIC_APM_DEBUG: ${{ inputs.debug }}
+          JOB_STATUS: ${{ inputs.fail && 'Failed' || 'Succeeded' }}
+
+      - name: Where to look
+        if: always()
+        run: |
+          echo "Open your Elastic APM app and look for the transaction name '${{ inputs.trace-name }}' (service 'task')."
+          echo "View the run here: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

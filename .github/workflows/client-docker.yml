@@ -1,0 +1,94 @@
+name: Client via docker
+
+on:
+  workflow_dispatch:
+    inputs:
+      trace-name:
+        description: 'Name of the trace to send (shown in APM)'
+        required: false
+        default: 'docker'
+      fail:
+        description: 'End the trace as a failure (for testing)'
+        required: false
+        type: boolean
+        default: false
+      debug:
+        description: 'Print the APM server responses (status + body)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  docker:
+    name: Run the client with the docker profile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t ci-apm-trace .
+
+      - name: Start trace (pre)
+        run: |
+          docker run --rm \
+            -e APM_CI_PLATFORM=docker \
+            -e ELASTIC_APM_SERVER_URL \
+            -e ELASTIC_APM_SECRET_TOKEN \
+            -e ELASTIC_APM_DEBUG="${{ inputs.debug }}" \
+            ci-apm-trace pre \
+            --trace-name "${{ inputs.trace-name }}" \
+            --build-id "${{ github.run_id }}" \
+            --build-number "${{ github.run_number }}" \
+            --branch "${{ github.ref_name }}" \
+            --commit "${{ github.sha }}" \
+            --repo "${{ github.repository }}" \
+            --ci_platform docker | tee apm.env
+          grep '^export APM_' apm.env | sed 's/^export //' >> "$GITHUB_ENV"
+        env:
+          ELASTIC_APM_SERVER_URL: ${{ vars.ELASTIC_APM_SERVER_URL }}
+          ELASTIC_APM_SECRET_TOKEN: ${{ secrets.ELASTIC_APM_SECRET_TOKEN }}
+
+      - name: Main work
+        run: |
+          docker run --rm --entrypoint node ci-apm-trace -v
+
+      - name: Record main task span
+        run: |
+          docker run --rm \
+            -e APM_CI_PLATFORM=docker \
+            -e ELASTIC_APM_SERVER_URL \
+            -e ELASTIC_APM_SECRET_TOKEN \
+            -e ELASTIC_APM_DEBUG="${{ inputs.debug }}" \
+            -e APM_TRACE_ID="${{ env.APM_TRACE_ID }}" \
+            -e APM_TRANSACTION_ID="${{ env.APM_TRANSACTION_ID }}" \
+            -e APM_SPAN_ID="${{ env.APM_SPAN_ID }}" \
+            -e APM_JOB_START_MS="${{ env.APM_JOB_START_MS }}" \
+            ci-apm-trace main --trace-name "${{ inputs.trace-name }}" --ci_platform docker
+        env:
+          ELASTIC_APM_SERVER_URL: ${{ vars.ELASTIC_APM_SERVER_URL }}
+          ELASTIC_APM_SECRET_TOKEN: ${{ secrets.ELASTIC_APM_SECRET_TOKEN }}
+
+      - name: End trace (post)
+        run: |
+          docker run --rm \
+            -e APM_CI_PLATFORM=docker \
+            -e ELASTIC_APM_SERVER_URL \
+            -e ELASTIC_APM_SECRET_TOKEN \
+            -e ELASTIC_APM_DEBUG="${{ inputs.debug }}" \
+            -e APM_TRACE_ID="${{ env.APM_TRACE_ID }}" \
+            -e APM_TRANSACTION_ID="${{ env.APM_TRANSACTION_ID }}" \
+            -e APM_SPAN_ID="${{ env.APM_SPAN_ID }}" \
+            -e APM_JOB_START_MS="${{ env.APM_JOB_START_MS }}" \
+            ci-apm-trace post --trace-name "${{ inputs.trace-name }}" --ci_platform docker ${{ inputs.fail && '--fail' || '' }}
+        env:
+          ELASTIC_APM_SERVER_URL: ${{ vars.ELASTIC_APM_SERVER_URL }}
+          ELASTIC_APM_SECRET_TOKEN: ${{ secrets.ELASTIC_APM_SECRET_TOKEN }}
+
+      - name: Where to look
+        if: always()
+        run: |
+          echo "Open your Elastic APM app and look for the transaction name '${{ inputs.trace-name }}' (service 'docker')."
+          echo "View the run here: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

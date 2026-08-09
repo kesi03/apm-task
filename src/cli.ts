@@ -212,7 +212,7 @@ async function main(): Promise<void> {
       'ci_platform': {
         type: 'string',
         default: process.env.APM_CI_PLATFORM,
-        description: 'CI platform profile to use (github-action, azure-devops, team-city, jenkins, docker, k8s, task)',
+        description: 'CI platform profile to use (npm, github-action, azure-devops, team-city, jenkins, docker, k8s, task)',
       },
       fail: {
         type: 'boolean',

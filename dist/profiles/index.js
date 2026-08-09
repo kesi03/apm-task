@@ -10,9 +10,11 @@ const docker_1 = __importDefault(require("./docker"));
 const github_action_1 = __importDefault(require("./github-action"));
 const jenkins_1 = __importDefault(require("./jenkins"));
 const k8s_1 = __importDefault(require("./k8s"));
+const npm_1 = __importDefault(require("./npm"));
 const task_1 = __importDefault(require("./task"));
 const team_city_1 = __importDefault(require("./team-city"));
 exports.profiles = {
+    [npm_1.default.name]: npm_1.default,
     [github_action_1.default.name]: github_action_1.default,
     [azure_devops_1.default.name]: azure_devops_1.default,
     [team_city_1.default.name]: team_city_1.default,
@@ -25,6 +27,6 @@ function getProfile(platform) {
     if (platform && exports.profiles[platform]) {
         return exports.profiles[platform];
     }
-    return task_1.default;
+    return npm_1.default;
 }
 //# sourceMappingURL=index.js.map

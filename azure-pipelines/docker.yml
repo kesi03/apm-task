@@ -1,0 +1,60 @@
+# Runs the ci-apm-trace client with the docker profile (inside the Docker image).
+#
+# Required pipeline variables:
+#   ELASTIC_APM_SERVER_URL     (plain)    e.g. https://<deployment-id>.apm.<region>.gcp.elastic.cloud:443
+#   ELASTIC_APM_SECRET_TOKEN   (secret)   APM secret token or Elastic API key
+#   traceName                  (plain)    optional, defaults to 'docker'
+trigger: none
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  traceName: docker
+
+steps:
+  - checkout: self
+
+  - script: docker build -t ci-apm-trace .
+    displayName: 'Build image'
+
+  - script: |
+      docker run --rm \
+        -e APM_CI_PLATFORM=docker \
+        -e ELASTIC_APM_SERVER_URL="$(ELASTIC_APM_SERVER_URL)" \
+        -e ELASTIC_APM_SECRET_TOKEN="$(ELASTIC_APM_SECRET_TOKEN)" \
+        ci-apm-trace pre --trace-name "$(traceName)" --ci_platform docker | tee apm.env
+      grep '^export APM_' apm.env | while IFS='=' read -r k v; do
+        key="${k#export }"
+        echo "##vso[task.setvariable variable=${key}]${v}"
+      done
+    displayName: 'Start trace (pre)'
+
+  - script: |
+      docker run --rm --entrypoint node ci-apm-trace -v
+    displayName: 'Main work'
+
+  - script: |
+      docker run --rm \
+        -e APM_CI_PLATFORM=docker \
+        -e ELASTIC_APM_SERVER_URL="$(ELASTIC_APM_SERVER_URL)" \
+        -e ELASTIC_APM_SECRET_TOKEN="$(ELASTIC_APM_SECRET_TOKEN)" \
+        -e APM_TRACE_ID="$(APM_TRACE_ID)" \
+        -e APM_TRANSACTION_ID="$(APM_TRANSACTION_ID)" \
+        -e APM_SPAN_ID="$(APM_SPAN_ID)" \
+        -e APM_JOB_START_MS="$(APM_JOB_START_MS)" \
+        ci-apm-trace main --trace-name "$(traceName)" --ci_platform docker
+    displayName: 'Record main task span'
+
+  - script: |
+      docker run --rm \
+        -e APM_CI_PLATFORM=docker \
+        -e ELASTIC_APM_SERVER_URL="$(ELASTIC_APM_SERVER_URL)" \
+        -e ELASTIC_APM_SECRET_TOKEN="$(ELASTIC_APM_SECRET_TOKEN)" \
+        -e APM_TRACE_ID="$(APM_TRACE_ID)" \
+        -e APM_TRANSACTION_ID="$(APM_TRANSACTION_ID)" \
+        -e APM_SPAN_ID="$(APM_SPAN_ID)" \
+        -e APM_JOB_START_MS="$(APM_JOB_START_MS)" \
+        ci-apm-trace post --trace-name "$(traceName)" --ci_platform docker
+    displayName: 'End trace (post)'
