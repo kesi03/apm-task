@@ -26,17 +26,16 @@ jobs:
     name: Run the client with the npm profile
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - run: npm ci
+      - name: Install the ci-apm-trace CLI globally
+        run: npm install -g @mockholm/ci-apm-trace
 
       - name: Start trace (pre)
         run: |
-          node dist/cli.js pre \
+          ci-apm-trace pre \
             --trace-name "${{ inputs.trace-name }}" \
             --build-id "${{ github.run_id }}" \
             --build-number "${{ github.run_number }}" \
@@ -51,17 +50,17 @@ jobs:
           ELASTIC_APM_DEBUG: ${{ inputs.debug }}
 
       - name: Main work
-        run: npm run typecheck
+        run: ci-apm-trace --version
 
       - name: Record main task span
-        run: node dist/cli.js main --trace-name "${{ inputs.trace-name }}" --ci_platform npm
+        run: ci-apm-trace main --trace-name "${{ inputs.trace-name }}" --ci_platform npm
         env:
           ELASTIC_APM_SERVER_URL: ${{ vars.ELASTIC_APM_SERVER_URL }}
           ELASTIC_APM_SECRET_TOKEN: ${{ secrets.ELASTIC_APM_SECRET_TOKEN }}
           ELASTIC_APM_DEBUG: ${{ inputs.debug }}
 
       - name: End trace (post)
-        run: node dist/cli.js post --trace-name "${{ inputs.trace-name }}" --ci_platform npm ${{ inputs.fail && '--fail' || '' }}
+        run: ci-apm-trace post --trace-name "${{ inputs.trace-name }}" --ci_platform npm ${{ inputs.fail && '--fail' || '' }}
         env:
           ELASTIC_APM_SERVER_URL: ${{ vars.ELASTIC_APM_SERVER_URL }}
           ELASTIC_APM_SECRET_TOKEN: ${{ secrets.ELASTIC_APM_SECRET_TOKEN }}

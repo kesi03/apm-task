@@ -37,7 +37,8 @@ jobs:
           curl -sL https://taskfile.dev/install.sh | sh
           echo "$PWD/bin" >> "$GITHUB_PATH"
 
-      - run: npm ci
+      - name: Install the ci-apm-trace CLI globally
+        run: npm install -g @mockholm/ci-apm-trace
 
       - name: Start trace (pre)
         run: |
@@ -54,7 +55,7 @@ jobs:
           BUILD_REPO: ${{ github.repository }}
 
       - name: Main work
-        run: npm run typecheck
+        run: task --version
 
       - name: Record main task span
         run: task main PROFILE=task TRACE_NAME="${{ inputs.trace-name }}"

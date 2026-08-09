@@ -7,10 +7,6 @@
 #   kubectl create secret generic apm-secret \
 #     --from-literal=server-url=https://<deployment-id>.apm.<region>.gcp.elastic.cloud:443 \
 #     --from-literal=secret-token=<your-secret-or-api-key>
-#
-# For a cluster that does not see the locally built image (e.g. minikube/kind),
-# push the image to a registry, change `image` below, and drop the
-# `imagePullPolicy: Never` line.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -22,8 +18,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: ci-apm-trace
-          image: ci-apm-trace
-          imagePullPolicy: Never
+          image: mockholm/ci-apm-trace
           env:
             - name: APM_CI_PLATFORM
               value: k8s

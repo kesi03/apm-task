@@ -26,8 +26,8 @@ steps:
       echo "##vso[task.prependpath]$(System.DefaultWorkingDirectory)/bin"
     displayName: 'Install go-task'
 
-  - script: npm ci
-    displayName: 'Install dependencies'
+  - script: npm install -g @mockholm/ci-apm-trace
+    displayName: 'Install the ci-apm-trace CLI globally'
 
   - script: |
       task pre PROFILE=task TRACE_NAME="$(traceName)" | tee apm.env
@@ -46,7 +46,7 @@ steps:
       BUILD_REPO: $(Build.Repository.Name)
       BUILD_REPO_URI: $(Build.Repository.Uri)
 
-  - script: npm run typecheck
+  - script: task --version
     displayName: 'Main work'
 
   - script: task main PROFILE=task TRACE_NAME="$(traceName)"

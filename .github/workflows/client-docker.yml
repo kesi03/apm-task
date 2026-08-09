@@ -26,11 +26,6 @@ jobs:
     name: Run the client with the docker profile
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Build image
-        run: docker build -t ci-apm-trace .
-
       - name: Start trace (pre)
         run: |
           docker run --rm \
@@ -38,7 +33,7 @@ jobs:
             -e ELASTIC_APM_SERVER_URL \
             -e ELASTIC_APM_SECRET_TOKEN \
             -e ELASTIC_APM_DEBUG="${{ inputs.debug }}" \
-            ci-apm-trace pre \
+            mockholm/ci-apm-trace pre \
             --trace-name "${{ inputs.trace-name }}" \
             --build-id "${{ github.run_id }}" \
             --build-number "${{ github.run_number }}" \
@@ -53,7 +48,7 @@ jobs:
 
       - name: Main work
         run: |
-          docker run --rm --entrypoint node ci-apm-trace -v
+          docker run --rm --entrypoint node mockholm/ci-apm-trace -v
 
       - name: Record main task span
         run: |
@@ -66,7 +61,7 @@ jobs:
             -e APM_TRANSACTION_ID="${{ env.APM_TRANSACTION_ID }}" \
             -e APM_SPAN_ID="${{ env.APM_SPAN_ID }}" \
             -e APM_JOB_START_MS="${{ env.APM_JOB_START_MS }}" \
-            ci-apm-trace main --trace-name "${{ inputs.trace-name }}" --ci_platform docker
+            mockholm/ci-apm-trace main --trace-name "${{ inputs.trace-name }}" --ci_platform docker
         env:
           ELASTIC_APM_SERVER_URL: ${{ vars.ELASTIC_APM_SERVER_URL }}
           ELASTIC_APM_SECRET_TOKEN: ${{ secrets.ELASTIC_APM_SECRET_TOKEN }}
@@ -82,7 +77,7 @@ jobs:
             -e APM_TRANSACTION_ID="${{ env.APM_TRANSACTION_ID }}" \
             -e APM_SPAN_ID="${{ env.APM_SPAN_ID }}" \
             -e APM_JOB_START_MS="${{ env.APM_JOB_START_MS }}" \
-            ci-apm-trace post --trace-name "${{ inputs.trace-name }}" --ci_platform docker ${{ inputs.fail && '--fail' || '' }}
+            mockholm/ci-apm-trace post --trace-name "${{ inputs.trace-name }}" --ci_platform docker ${{ inputs.fail && '--fail' || '' }}
         env:
           ELASTIC_APM_SERVER_URL: ${{ vars.ELASTIC_APM_SERVER_URL }}
           ELASTIC_APM_SECRET_TOKEN: ${{ secrets.ELASTIC_APM_SECRET_TOKEN }}
