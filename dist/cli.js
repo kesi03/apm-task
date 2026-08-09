@@ -576,7 +576,7 @@ function getEnvConfig() {
         serverUrl: process.env.ELASTIC_APM_SERVER_URL,
         secretToken: process.env.ELASTIC_APM_SECRET_TOKEN,
         apiKey: process.env.ELASTIC_APM_API_KEY,
-        serviceName: process.env.ELASTIC_APM_SERVICE_NAME || 'cli',
+        serviceName: process.env.ELASTIC_APM_SERVICE_NAME || (process.env.GITHUB_ACTIONS === 'true' ? 'github-action' : 'cli'),
         debug: isTruthy(process.env.ELASTIC_APM_DEBUG),
     };
 }
@@ -4112,7 +4112,7 @@ exports.colors = [6, 2, 3, 4, 5, 1];
 try {
 	// Optional dependency (as in, doesn't need to be installed, NOT like optionalDependencies in package.json)
 	// eslint-disable-next-line import/no-extraneous-dependencies
-	const supportsColor = __nccwpck_require__(75);
+	const supportsColor = __nccwpck_require__(2438);
 
 	if (supportsColor && (supportsColor.stderr || supportsColor).level >= 2) {
 		exports.colors = [
@@ -7903,10 +7903,161 @@ module.exports = (string, columns, options) => {
 
 /***/ }),
 
-/***/ 75:
+/***/ 2745:
 /***/ ((module) => {
 
-module.exports = eval("require")("supports-color");
+"use strict";
+
+
+module.exports = (flag, argv = process.argv) => {
+	const prefix = flag.startsWith('-') ? '' : (flag.length === 1 ? '-' : '--');
+	const position = argv.indexOf(prefix + flag);
+	const terminatorPosition = argv.indexOf('--');
+	return position !== -1 && (terminatorPosition === -1 || position < terminatorPosition);
+};
+
+
+/***/ }),
+
+/***/ 2438:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+const os = __nccwpck_require__(857);
+const tty = __nccwpck_require__(2018);
+const hasFlag = __nccwpck_require__(2745);
+
+const {env} = process;
+
+let forceColor;
+if (hasFlag('no-color') ||
+	hasFlag('no-colors') ||
+	hasFlag('color=false') ||
+	hasFlag('color=never')) {
+	forceColor = 0;
+} else if (hasFlag('color') ||
+	hasFlag('colors') ||
+	hasFlag('color=true') ||
+	hasFlag('color=always')) {
+	forceColor = 1;
+}
+
+if ('FORCE_COLOR' in env) {
+	if (env.FORCE_COLOR === 'true') {
+		forceColor = 1;
+	} else if (env.FORCE_COLOR === 'false') {
+		forceColor = 0;
+	} else {
+		forceColor = env.FORCE_COLOR.length === 0 ? 1 : Math.min(parseInt(env.FORCE_COLOR, 10), 3);
+	}
+}
+
+function translateLevel(level) {
+	if (level === 0) {
+		return false;
+	}
+
+	return {
+		level,
+		hasBasic: true,
+		has256: level >= 2,
+		has16m: level >= 3
+	};
+}
+
+function supportsColor(haveStream, streamIsTTY) {
+	if (forceColor === 0) {
+		return 0;
+	}
+
+	if (hasFlag('color=16m') ||
+		hasFlag('color=full') ||
+		hasFlag('color=truecolor')) {
+		return 3;
+	}
+
+	if (hasFlag('color=256')) {
+		return 2;
+	}
+
+	if (haveStream && !streamIsTTY && forceColor === undefined) {
+		return 0;
+	}
+
+	const min = forceColor || 0;
+
+	if (env.TERM === 'dumb') {
+		return min;
+	}
+
+	if (process.platform === 'win32') {
+		// Windows 10 build 10586 is the first Windows release that supports 256 colors.
+		// Windows 10 build 14931 is the first release that supports 16m/TrueColor.
+		const osRelease = os.release().split('.');
+		if (
+			Number(osRelease[0]) >= 10 &&
+			Number(osRelease[2]) >= 10586
+		) {
+			return Number(osRelease[2]) >= 14931 ? 3 : 2;
+		}
+
+		return 1;
+	}
+
+	if ('CI' in env) {
+		if (['TRAVIS', 'CIRCLECI', 'APPVEYOR', 'GITLAB_CI', 'GITHUB_ACTIONS', 'BUILDKITE'].some(sign => sign in env) || env.CI_NAME === 'codeship') {
+			return 1;
+		}
+
+		return min;
+	}
+
+	if ('TEAMCITY_VERSION' in env) {
+		return /^(9\.(0*[1-9]\d*)\.|\d{2,}\.)/.test(env.TEAMCITY_VERSION) ? 1 : 0;
+	}
+
+	if (env.COLORTERM === 'truecolor') {
+		return 3;
+	}
+
+	if ('TERM_PROGRAM' in env) {
+		const version = parseInt((env.TERM_PROGRAM_VERSION || '').split('.')[0], 10);
+
+		switch (env.TERM_PROGRAM) {
+			case 'iTerm.app':
+				return version >= 3 ? 3 : 2;
+			case 'Apple_Terminal':
+				return 2;
+			// No default
+		}
+	}
+
+	if (/-256(color)?$/i.test(env.TERM)) {
+		return 2;
+	}
+
+	if (/^screen|^xterm|^vt100|^vt220|^rxvt|color|ansi|cygwin|linux/i.test(env.TERM)) {
+		return 1;
+	}
+
+	if ('COLORTERM' in env) {
+		return 1;
+	}
+
+	return min;
+}
+
+function getSupportLevel(stream) {
+	const level = supportsColor(stream, stream && stream.isTTY);
+	return translateLevel(level);
+}
+
+module.exports = {
+	supportsColor: getSupportLevel,
+	stdout: translateLevel(supportsColor(true, tty.isatty(1))),
+	stderr: translateLevel(supportsColor(true, tty.isatty(2)))
+};
 
 
 /***/ }),
@@ -16071,7 +16222,7 @@ module.exports = /*#__PURE__*/JSON.parse('{"application/1d-interleaved-parityfec
 /***/ ((module) => {
 
 "use strict";
-module.exports = /*#__PURE__*/JSON.parse('{"name":"@mockholm/ci-apm-trace","version":"1.1.12","description":"Sends CI pipeline traces to Elastic APM","main":"dist/lifecycle.js","bin":{"ci-apm-trace":"dist/cli.js"},"files":["dist"],"scripts":{"build":"tsc -p tsconfig.json","typecheck":"tsc --noEmit","start":"node dist/cli.js","icons":"node scripts/gen-icon.js","bundle:github":"node scripts/bundle-github.js","package:azure":"node scripts/package-azure.js"},"engines":{"node":">=18"},"dependencies":{"axios":"^1.19.0","azure-pipelines-task-lib":"^5.0.0","yargs":"^17.7.2"},"devDependencies":{"@types/node":"^20.14.0","@types/yargs":"^17.0.32","@vercel/ncc":"^0.44.1","tfx-cli":"^0.23.4","typescript":"^5.5.0"}}');
+module.exports = /*#__PURE__*/JSON.parse('{"name":"@mockholm/ci-apm-trace","version":"1.1.13","description":"Sends CI pipeline traces to Elastic APM","main":"dist/lifecycle.js","bin":{"ci-apm-trace":"dist/cli.js"},"files":["dist"],"scripts":{"build":"tsc -p tsconfig.json","typecheck":"tsc --noEmit","start":"node dist/cli.js","icons":"node scripts/gen-icon.js","bundle:github":"node scripts/bundle-github.js","package:azure":"node scripts/package-azure.js"},"engines":{"node":">=18"},"dependencies":{"axios":"^1.19.0","azure-pipelines-task-lib":"^5.0.0","yargs":"^17.7.2"},"devDependencies":{"@types/node":"^20.14.0","@types/yargs":"^17.0.32","@vercel/ncc":"^0.44.1","tfx-cli":"^0.23.4","typescript":"^5.5.0"}}');
 
 /***/ })
 

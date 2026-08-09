@@ -20,7 +20,7 @@ export function getEnvConfig(): CliEndpointConfig {
     serverUrl: process.env.ELASTIC_APM_SERVER_URL,
     secretToken: process.env.ELASTIC_APM_SECRET_TOKEN,
     apiKey: process.env.ELASTIC_APM_API_KEY,
-    serviceName: process.env.ELASTIC_APM_SERVICE_NAME || 'cli',
+    serviceName: process.env.ELASTIC_APM_SERVICE_NAME || (process.env.GITHUB_ACTIONS === 'true' ? 'github-action' : 'cli'),
     debug: isTruthy(process.env.ELASTIC_APM_DEBUG),
   }
 }
