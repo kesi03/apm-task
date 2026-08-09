@@ -117,6 +117,65 @@ wrapper read the `GITHUB_*` / `RUNNER_*` / `BUILD_*` variants instead.
 | `GITHUB_ACTOR_ID`, `BUILD_REQUESTED_FOR_ID` | user `id` | — |
 | `GITHUB_ACTOR_EMAIL`, `BUILD_REQUESTED_FOR_EMAIL` | user `email` | — |
 
+### `.env` file support
+
+The CLI auto-loads a `.env` file from the current working directory at startup,
+so connection and CI metadata variables can live in a checked-in-free file
+instead of the shell environment. The file uses the same variables as
+[Configuration](#configuration) and [Optional CI metadata](#optional-ci-metadata):
+
+```bash
+# .env
+# --- APM Server connection ---
+ELASTIC_APM_SERVER_URL=https://apm.example.com
+ELASTIC_APM_SECRET_TOKEN=my-token
+ELASTIC_APM_SERVICE_NAME=my-pipeline
+
+# --- pipeline context ---
+BUILD_ID=42
+BUILD_NUMBER=7
+BUILD_BRANCH=main
+BUILD_COMMIT=abc123
+BUILD_REPO=acme/my-repo
+CI_PROVIDER=npm
+```
+
+```bash
+ci-apm-trace --trace-name release --build-id 42
+```
+
+With the file above, this is equivalent to:
+
+```bash
+ELASTIC_APM_SERVER_URL=https://apm.example.com \
+ELASTIC_APM_SECRET_TOKEN=my-token \
+ELASTIC_APM_SERVICE_NAME=my-pipeline \
+BUILD_ID=42 BUILD_NUMBER=7 BUILD_BRANCH=main BUILD_COMMIT=abc123 \
+BUILD_REPO=acme/my-repo CI_PROVIDER=npm \
+ci-apm-trace --trace-name release
+```
+
+Rules:
+
+- Loading is **opt-in per file**: nothing happens if `.env` does not exist.
+- Values are parsed as simple `KEY=VALUE` lines — `#` comments, blank lines,
+  an optional `export ` prefix, and single/double quotes are supported.
+- **Existing environment variables always win** — a `.env` value never
+  overrides a variable already set in the environment.
+- Use `--env-file <path>` to load a different file (relative paths are resolved
+  from the current directory), or `--env-file=` to disable loading entirely.
+  The option works with the one-shot mode and the `pre`/`main`/`post`
+  subcommands.
+
+```bash
+ci-apm-trace --env-file ./config/custom.env --trace-name release --build-id 42
+ci-apm-trace pre --env-file .env.local --trace-name release
+```
+
+> **CI security:** never commit secrets. Keep `.env` in `.gitignore` (this repo
+> does), and instead configure `ELASTIC_APM_SECRET_TOKEN` as a CI secret or
+> repository variable. The file support is a local-development convenience.
+
 ## CLI usage
 
 The CLI is a yargs command client with two modes: a **one-shot** mode for
@@ -143,8 +202,10 @@ Options:
   --commit        Git commit SHA                                        [string]
   --repo          Repository name                                       [string]
   --ci-provider   CI provider name                                      [string]
-  --ci_platform   CI platform profile (npm, github-action, azure-devops,
+  --ci_platform   CI platform profile to use (npm, github-action, azure-devops,
                   team-city, jenkins, docker, k8s, task)                [string]
+  --env-file      Path to an .env file to load (default: .env in the current
+                  directory)                                            [string]
   --fail          Simulate a pipeline failure         [boolean] [default: false]
   --debug         Show the APM server response in the output
                                                       [boolean] [default: false]
@@ -645,7 +706,7 @@ installed globally (npm) and the container image is the published
 | `task cli:docker`, `pre:docker`, `main:docker`, `post:docker` | the same runs inside the Docker image |
 | `task cli:k8s`, `pre:k8s`, `main:k8s`, `post:k8s` | the same runs as Kubernetes Pods |
 | `task k8s:apply`, `k8s:logs`, `k8s:delete` | manage the `k8s.yml` Job |
-| `task test`, `test:proxy` | smoke tests against the local source build |
+| `task test`, `test:proxy`, `test:dotenv` | smoke tests against the local source build |
 | `task docker:build` | build/tag the image locally |
 | `task publish:github VERSION=x`, `publish:azure` | release tasks (see [Publishing](#publishing)) |
 

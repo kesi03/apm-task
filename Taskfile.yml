@@ -74,6 +74,12 @@ tasks:
     cmds:
       - node scripts/test-proxy.js
 
+  test:dotenv:
+    desc: Verify .env files and --env-file are loaded by the CLI
+    deps: [build]
+    cmds:
+      - node scripts/test-dotenv.js
+
   docker:build:
     desc: Build the Docker image
     cmds:

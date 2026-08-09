@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { resolve } from 'path'
 import yargs from 'yargs/yargs'
 import { hideBin } from 'yargs/helpers'
 import { createLifecycle, PipelineLabels } from './lifecycle'
@@ -7,6 +8,7 @@ import { initCliApm } from './cli-common'
 import { runPre } from './cli-pre'
 import { runMain } from './cli-main'
 import { runPost } from './cli-post'
+import { loadEnvFile } from './dotenv'
 
 interface CliArgs {
   'trace-name': string
@@ -17,6 +19,7 @@ interface CliArgs {
   repo?: string
   'ci-provider'?: string
   'ci_platform'?: string
+  'env-file'?: string
   fail: boolean
   debug: boolean
   _: string[]
@@ -57,6 +60,30 @@ function applyEnv(args: CliArgs): void {
   }
 }
 
+function resolveEnvFile(argv: string[]): string | undefined {
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]
+    if (arg === '--env-file') {
+      return argv[i + 1]
+    }
+    if (arg.startsWith('--env-file=')) {
+      return arg.slice('--env-file='.length)
+    }
+  }
+  return undefined
+}
+
+function loadEnv(): void {
+  const envFile = resolveEnvFile(process.argv)
+  if (envFile !== undefined) {
+    if (envFile) {
+      loadEnvFile(resolve(envFile))
+    }
+    return
+  }
+  loadEnvFile(resolve('.env'))
+}
+
 async function runFlat(args: CliArgs): Promise<void> {
   applyEnv(args)
 
@@ -87,6 +114,8 @@ async function runFlat(args: CliArgs): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  loadEnv()
+
   const parser = yargs(hideBin(process.argv))
     .scriptName('ci-apm-trace')
     .command(
@@ -213,6 +242,10 @@ async function main(): Promise<void> {
         type: 'string',
         default: process.env.APM_CI_PLATFORM,
         description: 'CI platform profile to use (npm, github-action, azure-devops, team-city, jenkins, docker, k8s, task)',
+      },
+      'env-file': {
+        type: 'string',
+        description: 'Path to an .env file to load (default: .env in the current directory)',
       },
       fail: {
         type: 'boolean',

@@ -815,6 +815,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
+const path_1 = __nccwpck_require__(6928);
 const yargs_1 = __importDefault(__nccwpck_require__(495));
 const helpers_1 = __nccwpck_require__(7763);
 const lifecycle_1 = __nccwpck_require__(3369);
@@ -822,6 +823,7 @@ const cli_common_1 = __nccwpck_require__(6645);
 const cli_pre_1 = __nccwpck_require__(7403);
 const cli_main_1 = __nccwpck_require__(365);
 const cli_post_1 = __nccwpck_require__(9150);
+const dotenv_1 = __nccwpck_require__(5647);
 function applyCiPlatform(value) {
     if (value) {
         process.env.APM_CI_PLATFORM = value;
@@ -847,6 +849,28 @@ function applyEnv(args) {
     if (args['ci-provider']) {
         process.env.CI_PROVIDER = args['ci-provider'];
     }
+}
+function resolveEnvFile(argv) {
+    for (let i = 0; i < argv.length; i++) {
+        const arg = argv[i];
+        if (arg === '--env-file') {
+            return argv[i + 1];
+        }
+        if (arg.startsWith('--env-file=')) {
+            return arg.slice('--env-file='.length);
+        }
+    }
+    return undefined;
+}
+function loadEnv() {
+    const envFile = resolveEnvFile(process.argv);
+    if (envFile !== undefined) {
+        if (envFile) {
+            (0, dotenv_1.loadEnvFile)((0, path_1.resolve)(envFile));
+        }
+        return;
+    }
+    (0, dotenv_1.loadEnvFile)((0, path_1.resolve)('.env'));
 }
 async function runFlat(args) {
     applyEnv(args);
@@ -874,6 +898,7 @@ async function runFlat(args) {
     }
 }
 async function main() {
+    loadEnv();
     const parser = (0, yargs_1.default)((0, helpers_1.hideBin)(process.argv))
         .scriptName('ci-apm-trace')
         .command('pre', 'Start the trace: generate IDs and emit APM_* environment variables for main/post', (y) => y.options({
@@ -986,6 +1011,10 @@ async function main() {
             default: process.env.APM_CI_PLATFORM,
             description: 'CI platform profile to use (npm, github-action, azure-devops, team-city, jenkins, docker, k8s, task)',
         },
+        'env-file': {
+            type: 'string',
+            description: 'Path to an .env file to load (default: .env in the current directory)',
+        },
         fail: {
             type: 'boolean',
             default: false,
@@ -1009,6 +1038,70 @@ main().catch((error) => {
     process.exit(1);
 });
 //# sourceMappingURL=cli.js.map
+
+/***/ }),
+
+/***/ 5647:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.parseEnv = parseEnv;
+exports.loadEnvFile = loadEnvFile;
+const fs_1 = __nccwpck_require__(9896);
+function parseEnv(contents) {
+    const result = {};
+    for (const rawLine of contents.split(/\r?\n/)) {
+        let line = rawLine.trim();
+        if (!line || line.startsWith('#')) {
+            continue;
+        }
+        if (line.startsWith('export ')) {
+            line = line.slice('export '.length).trimStart();
+        }
+        const eq = line.indexOf('=');
+        if (eq === -1) {
+            continue;
+        }
+        const key = line.slice(0, eq).trim();
+        if (!key) {
+            continue;
+        }
+        let value = line.slice(eq + 1).trim();
+        if (value.length >= 2) {
+            const first = value[0];
+            const last = value[value.length - 1];
+            if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+                value = value.slice(1, -1);
+            }
+            else {
+                const hash = value.search(/(^|\s)#/);
+                if (hash !== -1) {
+                    value = value.slice(0, hash).trimEnd();
+                }
+            }
+        }
+        result[key] = value;
+    }
+    return result;
+}
+function loadEnvFile(filePath) {
+    let contents;
+    try {
+        contents = (0, fs_1.readFileSync)(filePath, 'utf8');
+    }
+    catch {
+        return false;
+    }
+    for (const [key, value] of Object.entries(parseEnv(contents))) {
+        if (process.env[key] === undefined) {
+            process.env[key] = value;
+        }
+    }
+    return true;
+}
+//# sourceMappingURL=dotenv.js.map
 
 /***/ }),
 
