@@ -45,6 +45,31 @@ const package_json_1 = __importDefault(require("../package.json"));
 function randomId() {
     return (0, crypto_1.randomBytes)(8).toString('hex');
 }
+function isElasticApiKey(value) {
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value) || value.length % 4 !== 0) {
+        return false;
+    }
+    try {
+        const decoded = Buffer.from(value, 'base64').toString('utf8');
+        return decoded.includes(':') && !decoded.includes('\uFFFD');
+    }
+    catch {
+        return false;
+    }
+}
+function normalizeServerUrl(value) {
+    try {
+        const parsed = new URL(value);
+        if (/\.ingest\./.test(parsed.hostname) && parsed.hostname.endsWith('.elastic.cloud')) {
+            parsed.hostname = parsed.hostname.replace(/\.ingest\./, '.apm.');
+            return { url: parsed.toString().replace(/\/+$/, ''), corrected: true };
+        }
+        return { url: value.replace(/\/+$/, ''), corrected: false };
+    }
+    catch {
+        return { url: value.replace(/\/+$/, ''), corrected: false };
+    }
+}
 function nonEmpty(value) {
     return value && value.trim() ? value.trim() : undefined;
 }
@@ -72,9 +97,25 @@ class ApmClient {
     constructor(options = {}) {
         this.transactions = [];
         this.currentTransaction = null;
-        this.serverUrl = nonEmpty(options.serverUrl ?? process.env.ELASTIC_APM_SERVER_URL);
-        this.secretToken = nonEmpty(options.secretToken ?? process.env.ELASTIC_APM_SECRET_TOKEN);
-        this.apiKey = nonEmpty(options.apiKey ?? process.env.ELASTIC_APM_API_KEY);
+        const rawServerUrl = nonEmpty(options.serverUrl ?? process.env.ELASTIC_APM_SERVER_URL);
+        let serverUrl;
+        if (rawServerUrl) {
+            const normalized = normalizeServerUrl(rawServerUrl);
+            serverUrl = normalized.url;
+            if (normalized.corrected) {
+                console.warn(`ci-apm-trace: '${rawServerUrl}' is the Elasticsearch/OTel ingest endpoint, not an APM Server URL; using '${normalized.url}' instead.`);
+            }
+        }
+        this.serverUrl = serverUrl;
+        const secretToken = nonEmpty(options.secretToken ?? process.env.ELASTIC_APM_SECRET_TOKEN);
+        const apiKey = nonEmpty(options.apiKey ?? process.env.ELASTIC_APM_API_KEY);
+        if (apiKey) {
+            this.apiKey = apiKey;
+        }
+        else if (secretToken && isElasticApiKey(secretToken)) {
+            this.apiKey = secretToken;
+        }
+        this.secretToken = this.apiKey ? undefined : secretToken;
         this.serviceName = nonEmpty(options.serviceName ?? process.env.ELASTIC_APM_SERVICE_NAME) ?? 'ci-apm-trace';
         this.serviceVersion = nonEmpty(options.serviceVersion ?? process.env.ELASTIC_APM_SERVICE_VERSION);
         this.serviceNode = nonEmpty(options.serviceNode);

@@ -38,11 +38,18 @@ jobs:
           APM_TOKEN: ${{ secrets.ELASTIC_APM_SECRET_TOKEN }}
         run: |
           if [ -z "$APM_SERVER" ]; then
-            echo "::error::The ELASTIC_APM_SERVER_URL secret is not set. Add it under Settings > Secrets and variables > Actions."
+            echo "::error::The ELASTIC_APM_SERVER_URL variable is not set. Add it under Settings > Secrets and variables > Actions > Variables."
             exit 1
           fi
           if [ -z "$APM_TOKEN" ]; then
             echo "::warning::The ELASTIC_APM_SECRET_TOKEN secret is not set; the trace will be sent without authentication."
+          fi
+          if echo "$APM_SERVER" | grep -q '\.ingest\.'; then
+            echo "::error::ELASTIC_APM_SERVER_URL ($APM_SERVER) looks like the Elasticsearch/OTel ingest endpoint, not an APM Server URL. Use the APM endpoint (e.g. https://<deployment-id>.apm.<region>.gcp.elastic.cloud:443) from your Elastic deployment page."
+            exit 1
+          fi
+          if [ -n "$APM_TOKEN" ] && echo "$APM_TOKEN" | grep -q '='; then
+            echo "::warning::The token looks like an Elastic API key; it will be sent as 'Authorization: ApiKey <key>'."
           fi
           echo "APM server URL: $APM_SERVER"
       - name: Prepare
