@@ -19,6 +19,7 @@ function saveState(name, value) {
 function buildEnv(apmServer, apmToken) {
     const env = { ...process.env };
     (0, github_env_1.applyGitHubEnv)(env);
+    env.APM_CI_PLATFORM = 'github-action';
     if (apmServer) {
         env.ELASTIC_APM_SERVER_URL = apmServer;
     }

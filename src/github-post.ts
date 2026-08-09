@@ -23,6 +23,7 @@ function main(): void {
 
   const env: NodeJS.ProcessEnv = { ...process.env }
   applyGitHubEnv(env)
+  env.APM_CI_PLATFORM = 'github-action'
 
   for (const name of ['APM_TRACE_ID', 'APM_TRANSACTION_ID', 'APM_SPAN_ID', 'APM_JOB_START_MS']) {
     const value = getState(name)

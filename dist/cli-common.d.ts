@@ -1,4 +1,5 @@
 import { ApmAgent } from './apm';
+import { PipelineProfile } from './profiles/types';
 export interface CliEndpointConfig {
     serverUrl?: string;
     secretToken?: string;
@@ -6,6 +7,8 @@ export interface CliEndpointConfig {
     serviceName: string;
     debug: boolean;
 }
+export declare function getCiPlatform(): string | undefined;
+export declare function selectedProfile(): PipelineProfile;
 export declare function getEnvConfig(): CliEndpointConfig;
 export declare function initCliApm(options?: {
     debug?: boolean;

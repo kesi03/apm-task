@@ -556,6 +556,8 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getCiPlatform = getCiPlatform;
+exports.selectedProfile = selectedProfile;
 exports.getEnvConfig = getEnvConfig;
 exports.initCliApm = initCliApm;
 exports.randomHex = randomHex;
@@ -567,16 +569,25 @@ exports.pipelineCustom = pipelineCustom;
 const crypto_1 = __nccwpck_require__(6982);
 const os = __importStar(__nccwpck_require__(857));
 const apm_1 = __nccwpck_require__(5021);
+const profiles_1 = __nccwpck_require__(8588);
 function isTruthy(value) {
     const v = (value ?? '').toLowerCase();
     return v === 'true' || v === '1';
 }
+function getCiPlatform() {
+    return process.env.APM_CI_PLATFORM?.trim() || undefined;
+}
+function selectedProfile() {
+    return (0, profiles_1.getProfile)(getCiPlatform());
+}
 function getEnvConfig() {
+    const profile = selectedProfile();
+    profile.applyEnv(process.env);
     return {
         serverUrl: process.env.ELASTIC_APM_SERVER_URL,
         secretToken: process.env.ELASTIC_APM_SECRET_TOKEN,
         apiKey: process.env.ELASTIC_APM_API_KEY,
-        serviceName: process.env.ELASTIC_APM_SERVICE_NAME || (process.env.GITHUB_ACTIONS === 'true' ? 'github-action' : 'cli'),
+        serviceName: process.env.ELASTIC_APM_SERVICE_NAME || profile.name,
         debug: isTruthy(process.env.ELASTIC_APM_DEBUG),
     };
 }
@@ -597,52 +608,13 @@ function randomHex(bytes) {
     return (0, crypto_1.randomBytes)(bytes).toString('hex');
 }
 function providerName() {
-    return process.env.CI_PROVIDER || 'cli';
+    return selectedProfile().name;
 }
 function pipelineName() {
-    return process.env.BUILD_DEFINITION_NAME || process.env.CI_PIPELINE_NAME || 'ci-pipeline';
+    return selectedProfile().pipelineName();
 }
 function pipelineTags() {
-    const tags = {};
-    const add = (key, value) => {
-        if (value) {
-            tags[key] = value;
-        }
-    };
-    const buildId = process.env.BUILD_ID;
-    const buildNumber = process.env.BUILD_NUMBER;
-    const branch = process.env.BUILD_BRANCH;
-    const commit = process.env.BUILD_COMMIT;
-    const repo = process.env.BUILD_REPO;
-    const provider = providerName();
-    add('definition_name', pipelineName());
-    add('build_id', buildId);
-    add('build_number', buildNumber);
-    add('branch', branch);
-    add('commit', commit);
-    add('repo', repo);
-    add('ci_provider', provider);
-    add('runner_os', process.env.RUNNER_OS);
-    add('runner_arch', process.env.RUNNER_ARCH);
-    add('ci.pipeline.id', buildId);
-    add('ci.pipeline.name', pipelineName());
-    add('ci.pipeline.run.id', buildId);
-    add('ci.pipeline.run.number', buildNumber);
-    add('ci.pipeline.run.url', process.env.BUILD_URL);
-    add('ci.pipeline.run.user', process.env.GITHUB_ACTOR || process.env.BUILD_REQUESTED_FOR);
-    add('ci.pipeline.run.result', process.env.JOB_STATUS);
-    add('ci.pipeline.agent.name', process.env.AGENT_NAME || process.env.RUNNER_NAME);
-    add('ci.job.id', process.env.JOB_ID);
-    add('ci.job.name', process.env.JOB_NAME);
-    add('ci.job.status', process.env.JOB_STATUS);
-    add('ci.step.name', 'ci-apm-trace');
-    add('ci.build.ref', branch);
-    add('ci.build.commit', commit);
-    add('ci.build.repo', repo);
-    add('vcs.repository.url', process.env.BUILD_REPO_URI);
-    add('vcs.ref.head.name', process.env.BUILD_REF || branch);
-    add('vcs.commit.id', commit);
-    return tags;
+    return selectedProfile().pipelineTags();
 }
 function pipelineUser() {
     const user = {};
@@ -661,24 +633,7 @@ function pipelineUser() {
     return user;
 }
 function pipelineCustom() {
-    const custom = {};
-    const add = (key, value) => {
-        if (value) {
-            custom[key] = value;
-        }
-    };
-    add('definition_id', process.env.BUILD_DEFINITION_ID);
-    add('definition_name', pipelineName());
-    add('build_id', process.env.BUILD_ID);
-    add('build_number', process.env.BUILD_NUMBER);
-    add('build_url', process.env.BUILD_URL);
-    add('requested_for', process.env.GITHUB_ACTOR || process.env.BUILD_REQUESTED_FOR);
-    add('agent_name', process.env.AGENT_NAME || process.env.RUNNER_NAME);
-    add('agent_version', process.env.AGENT_VERSION);
-    add('job_id', process.env.JOB_ID);
-    add('job_name', process.env.JOB_NAME);
-    add('repo_uri', process.env.BUILD_REPO_URI);
-    return custom;
+    return selectedProfile().pipelineCustom();
 }
 //# sourceMappingURL=cli-common.js.map
 
@@ -862,12 +817,18 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 const yargs_1 = __importDefault(__nccwpck_require__(495));
 const helpers_1 = __nccwpck_require__(7763);
-const apm_1 = __nccwpck_require__(5021);
 const lifecycle_1 = __nccwpck_require__(3369);
+const cli_common_1 = __nccwpck_require__(6645);
 const cli_pre_1 = __nccwpck_require__(7403);
 const cli_main_1 = __nccwpck_require__(365);
 const cli_post_1 = __nccwpck_require__(9150);
+function applyCiPlatform(value) {
+    if (value) {
+        process.env.APM_CI_PLATFORM = value;
+    }
+}
 function applyEnv(args) {
+    applyCiPlatform(args['ci_platform']);
     if (args['build-id']) {
         process.env.BUILD_ID = args['build-id'];
     }
@@ -889,7 +850,7 @@ function applyEnv(args) {
 }
 async function runFlat(args) {
     applyEnv(args);
-    (0, apm_1.initApm)({ debug: args.debug });
+    (0, cli_common_1.initCliApm)({ debug: args.debug });
     const lifecycle = (0, lifecycle_1.createLifecycle)();
     const labels = {
         buildId: args['build-id'],
@@ -928,6 +889,7 @@ async function main() {
         },
     }), async (argv) => {
         const args = argv;
+        applyCiPlatform(args['ci_platform']);
         try {
             await (0, cli_pre_1.runPre)({ traceName: args['trace-name'], debug: args.debug });
         }
@@ -950,6 +912,7 @@ async function main() {
         },
     }), async (argv) => {
         const args = argv;
+        applyCiPlatform(args['ci_platform']);
         try {
             await (0, cli_main_1.runMain)({ traceName: args['trace-name'], debug: args.debug });
         }
@@ -977,6 +940,7 @@ async function main() {
         },
     }), async (argv) => {
         const args = argv;
+        applyCiPlatform(args['ci_platform']);
         try {
             await (0, cli_post_1.runPost)({ traceName: args['trace-name'], fail: args.fail, debug: args.debug });
             process.exitCode = args.fail ? 1 : 0;
@@ -1016,6 +980,11 @@ async function main() {
         'ci-provider': {
             type: 'string',
             description: 'CI provider name',
+        },
+        'ci_platform': {
+            type: 'string',
+            default: process.env.APM_CI_PLATFORM,
+            description: 'CI platform profile to use (github-action, azure-devops, team-city, jenkins, docker, k8s, task)',
         },
         fail: {
             type: 'boolean',
@@ -1124,6 +1093,697 @@ function createLifecycle(agent = apm_1.apm) {
     };
 }
 //# sourceMappingURL=lifecycle.js.map
+
+/***/ }),
+
+/***/ 3565:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.azureDevopsProfile = void 0;
+const common_1 = __nccwpck_require__(8663);
+function buildUrl() {
+    const collectionUri = process.env.SYSTEM_TEAMFOUNDATIONCOLLECTIONURI;
+    const project = process.env.SYSTEM_TEAMPROJECT;
+    const buildId = process.env.BUILD_BUILDID;
+    if (collectionUri && project && buildId) {
+        return `${collectionUri.replace(/\/+$/, '')}/${project}/_build/results?buildId=${buildId}`;
+    }
+    return process.env.BUILD_BUILDURI;
+}
+exports.azureDevopsProfile = {
+    name: 'azure-devops',
+    applyEnv(env) {
+        const set = (key, value) => {
+            if (value) {
+                env[key] = value;
+            }
+        };
+        set('CI_PROVIDER', 'azure-devops');
+        set('BUILD_ID', process.env.BUILD_BUILDID);
+        set('BUILD_NUMBER', process.env.BUILD_BUILDNUMBER);
+        set('BUILD_BRANCH', process.env.BUILD_SOURCEBRANCHNAME);
+        set('BUILD_COMMIT', process.env.BUILD_SOURCEVERSION);
+        set('BUILD_REPO', process.env.BUILD_REPOSITORY_NAME);
+        set('BUILD_REF', process.env.BUILD_SOURCEBRANCH);
+        set('BUILD_DEFINITION_NAME', process.env.BUILD_DEFINITIONNAME);
+        set('JOB_ID', process.env.SYSTEM_JOBID);
+        set('JOB_NAME', process.env.SYSTEM_JOBNAME);
+        set('JOB_STATUS', process.env.AGENT_JOBSTATUS);
+        set('BUILD_REPO_URI', process.env.BUILD_REPOSITORY_URI);
+        set('BUILD_URL', buildUrl());
+        set('BUILD_REQUESTED_FOR', process.env.BUILD_REQUESTEDFOR);
+        set('BUILD_REQUESTED_FOR_ID', process.env.BUILD_REQUESTEDFORID);
+        set('BUILD_REQUESTED_FOR_EMAIL', process.env.BUILD_REQUESTEDFOREMAIL);
+        set('AGENT_NAME', process.env.AGENT_NAME);
+        set('RUNNER_OS', process.env.AGENT_OS);
+        set('RUNNER_ARCH', process.env.AGENT_OSARCHITECTURE);
+    },
+    pipelineName() {
+        return process.env.BUILD_DEFINITIONNAME || 'azure-pipelines';
+    },
+    pipelineTags() {
+        const branch = process.env.BUILD_SOURCEBRANCHNAME;
+        const commit = process.env.BUILD_SOURCEVERSION;
+        const repo = process.env.BUILD_REPOSITORY_NAME;
+        return (0, common_1.pickStrings)({
+            definition_name: process.env.BUILD_DEFINITIONNAME,
+            build_id: process.env.BUILD_BUILDID,
+            build_number: process.env.BUILD_BUILDNUMBER,
+            branch,
+            commit,
+            repo,
+            ci_provider: 'azure-devops',
+            runner_os: process.env.AGENT_OS,
+            runner_arch: process.env.AGENT_OSARCHITECTURE,
+            'ci.pipeline.id': process.env.BUILD_DEFINITIONID,
+            'ci.pipeline.name': process.env.BUILD_DEFINITIONNAME,
+            'ci.pipeline.run.id': process.env.BUILD_BUILDID,
+            'ci.pipeline.run.number': process.env.BUILD_BUILDNUMBER,
+            'ci.pipeline.run.url': buildUrl(),
+            'ci.pipeline.run.user': process.env.BUILD_REQUESTEDFOR,
+            'ci.pipeline.run.result': process.env.AGENT_JOBSTATUS,
+            'ci.pipeline.agent.name': process.env.AGENT_NAME,
+            'ci.job.id': process.env.SYSTEM_JOBID,
+            'ci.job.name': process.env.SYSTEM_JOBNAME,
+            'ci.job.status': process.env.AGENT_JOBSTATUS,
+            'ci.step.name': 'CiApmTrace',
+            'ci.build.ref': branch,
+            'ci.build.commit': commit,
+            'ci.build.repo': repo,
+            'vcs.repository.url': process.env.BUILD_REPOSITORY_URI,
+            'vcs.ref.head.name': process.env.BUILD_SOURCEBRANCH,
+            'vcs.commit.id': commit,
+        });
+    },
+    pipelineCustom() {
+        return (0, common_1.pickValues)({
+            definition_id: process.env.BUILD_DEFINITIONID,
+            definition_name: process.env.BUILD_DEFINITIONNAME,
+            build_id: process.env.BUILD_BUILDID,
+            build_number: process.env.BUILD_BUILDNUMBER,
+            build_url: buildUrl(),
+            queued_by: process.env.BUILD_QUEUEDBY,
+            requested_for: process.env.BUILD_REQUESTEDFOR,
+            agent_name: process.env.AGENT_NAME,
+            agent_version: process.env.AGENT_VERSION,
+            job_id: process.env.SYSTEM_JOBID,
+            job_name: process.env.SYSTEM_JOBNAME,
+            project: process.env.SYSTEM_TEAMPROJECT,
+            collection_uri: process.env.SYSTEM_TEAMFOUNDATIONCOLLECTIONURI,
+            repo_uri: process.env.BUILD_REPOSITORY_URI,
+        });
+    },
+};
+exports["default"] = exports.azureDevopsProfile;
+//# sourceMappingURL=azure-devops.js.map
+
+/***/ }),
+
+/***/ 8663:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.pickStrings = pickStrings;
+exports.pickValues = pickValues;
+function pickStrings(values) {
+    const out = {};
+    for (const [key, value] of Object.entries(values)) {
+        if (value) {
+            out[key] = value;
+        }
+    }
+    return out;
+}
+function pickValues(values) {
+    const out = {};
+    for (const [key, value] of Object.entries(values)) {
+        if (value !== undefined && value !== null && value !== '') {
+            out[key] = value;
+        }
+    }
+    return out;
+}
+//# sourceMappingURL=common.js.map
+
+/***/ }),
+
+/***/ 970:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.dockerProfile = void 0;
+const common_1 = __nccwpck_require__(8663);
+exports.dockerProfile = {
+    name: 'docker',
+    applyEnv(env) {
+        const set = (key, value) => {
+            if (value) {
+                env[key] = value;
+            }
+        };
+        set('CI_PROVIDER', 'docker');
+        set('BUILD_ID', process.env.HOSTNAME);
+        set('AGENT_NAME', process.env.HOSTNAME);
+        set('RUNNER_OS', process.platform);
+        set('RUNNER_ARCH', process.arch);
+    },
+    pipelineName() {
+        return process.env.CI_PIPELINE_NAME || 'docker';
+    },
+    pipelineTags() {
+        return (0, common_1.pickStrings)({
+            build_id: process.env.HOSTNAME,
+            ci_provider: 'docker',
+            runner_os: process.platform,
+            runner_arch: process.arch,
+            'ci.pipeline.agent.name': process.env.HOSTNAME,
+            'ci.step.name': 'ci-apm-trace',
+        });
+    },
+    pipelineCustom() {
+        return (0, common_1.pickValues)({
+            provider: 'docker',
+            container_id: process.env.HOSTNAME,
+            hostname: process.env.HOSTNAME,
+            ci: process.env.CI,
+            image: process.env.IMAGE_NAME,
+            platform: process.platform,
+            arch: process.arch,
+            node_version: process.version,
+        });
+    },
+};
+exports["default"] = exports.dockerProfile;
+//# sourceMappingURL=docker.js.map
+
+/***/ }),
+
+/***/ 1216:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.githubActionProfile = void 0;
+const common_1 = __nccwpck_require__(8663);
+exports.githubActionProfile = {
+    name: 'github-action',
+    applyEnv(env) {
+        const set = (key, value) => {
+            if (value) {
+                env[key] = value;
+            }
+        };
+        const serverUrl = process.env.GITHUB_SERVER_URL || 'https://github.com';
+        const repo = process.env.GITHUB_REPOSITORY;
+        set('CI_PROVIDER', 'github-action');
+        set('BUILD_ID', process.env.GITHUB_RUN_ID);
+        set('BUILD_NUMBER', process.env.GITHUB_RUN_NUMBER);
+        set('BUILD_BRANCH', process.env.GITHUB_REF_NAME);
+        set('BUILD_COMMIT', process.env.GITHUB_SHA);
+        set('BUILD_REPO', repo);
+        set('BUILD_REF', process.env.GITHUB_REF_NAME);
+        set('BUILD_DEFINITION_NAME', process.env.GITHUB_WORKFLOW);
+        set('JOB_ID', process.env.GITHUB_JOB);
+        set('JOB_NAME', process.env.GITHUB_JOB);
+        set('BUILD_REPO_URI', repo ? `${serverUrl}/${repo}` : undefined);
+        set('BUILD_URL', repo && process.env.GITHUB_RUN_ID ? `${serverUrl}/${repo}/actions/runs/${process.env.GITHUB_RUN_ID}` : undefined);
+        set('BUILD_REQUESTED_FOR', process.env.GITHUB_ACTOR);
+        set('BUILD_REQUESTED_FOR_ID', process.env.GITHUB_ACTOR_ID);
+        set('BUILD_REQUESTED_FOR_EMAIL', process.env.GITHUB_ACTOR_EMAIL);
+        set('AGENT_NAME', process.env.RUNNER_NAME);
+    },
+    pipelineName() {
+        return process.env.GITHUB_WORKFLOW || 'github-action';
+    },
+    pipelineTags() {
+        const serverUrl = process.env.GITHUB_SERVER_URL || 'https://github.com';
+        const repo = process.env.GITHUB_REPOSITORY;
+        const branch = process.env.GITHUB_REF_NAME;
+        const commit = process.env.GITHUB_SHA;
+        return (0, common_1.pickStrings)({
+            definition_name: process.env.GITHUB_WORKFLOW,
+            build_id: process.env.GITHUB_RUN_ID,
+            build_number: process.env.GITHUB_RUN_NUMBER,
+            branch,
+            commit,
+            repo,
+            ci_provider: 'github-action',
+            runner_os: process.env.RUNNER_OS,
+            runner_arch: process.env.RUNNER_ARCH,
+            'ci.pipeline.id': process.env.GITHUB_RUN_ID,
+            'ci.pipeline.name': process.env.GITHUB_WORKFLOW,
+            'ci.pipeline.run.id': process.env.GITHUB_RUN_ID,
+            'ci.pipeline.run.number': process.env.GITHUB_RUN_NUMBER,
+            'ci.pipeline.run.url': repo && process.env.GITHUB_RUN_ID ? `${serverUrl}/${repo}/actions/runs/${process.env.GITHUB_RUN_ID}` : undefined,
+            'ci.pipeline.run.user': process.env.GITHUB_ACTOR,
+            'ci.pipeline.run.result': process.env.JOB_STATUS,
+            'ci.pipeline.agent.name': process.env.RUNNER_NAME,
+            'ci.job.id': process.env.GITHUB_JOB,
+            'ci.job.name': process.env.GITHUB_JOB,
+            'ci.job.status': process.env.JOB_STATUS,
+            'ci.step.name': 'ci-apm-trace',
+            'ci.build.ref': branch,
+            'ci.build.commit': commit,
+            'ci.build.repo': repo,
+            'vcs.repository.url': repo ? `${serverUrl}/${repo}` : undefined,
+            'vcs.ref.head.name': process.env.GITHUB_REF_NAME,
+            'vcs.commit.id': commit,
+        });
+    },
+    pipelineCustom() {
+        const serverUrl = process.env.GITHUB_SERVER_URL || 'https://github.com';
+        const repo = process.env.GITHUB_REPOSITORY;
+        const runId = process.env.GITHUB_RUN_ID;
+        return (0, common_1.pickValues)({
+            provider: 'github-action',
+            workflow: process.env.GITHUB_WORKFLOW,
+            workflow_ref: process.env.GITHUB_WORKFLOW_REF,
+            definition_name: process.env.GITHUB_WORKFLOW,
+            build_id: runId,
+            build_number: process.env.GITHUB_RUN_NUMBER,
+            build_url: repo && runId ? `${serverUrl}/${repo}/actions/runs/${runId}` : undefined,
+            run_attempt: process.env.GITHUB_RUN_ATTEMPT ? Number(process.env.GITHUB_RUN_ATTEMPT) : undefined,
+            event: process.env.GITHUB_EVENT_NAME,
+            ref: process.env.GITHUB_REF,
+            branch: process.env.GITHUB_REF_NAME,
+            commit: process.env.GITHUB_SHA,
+            repo,
+            repo_url: repo ? `${serverUrl}/${repo}` : undefined,
+            requested_for: process.env.GITHUB_ACTOR,
+            actor_id: process.env.GITHUB_ACTOR_ID,
+            actor_email: process.env.GITHUB_ACTOR_EMAIL,
+            job_id: process.env.GITHUB_JOB,
+            job_name: process.env.GITHUB_JOB,
+            agent_name: process.env.RUNNER_NAME,
+            runner_os: process.env.RUNNER_OS,
+            runner_arch: process.env.RUNNER_ARCH,
+            server_url: process.env.GITHUB_SERVER_URL,
+            api_url: process.env.GITHUB_API_URL,
+        });
+    },
+};
+exports["default"] = exports.githubActionProfile;
+//# sourceMappingURL=github-action.js.map
+
+/***/ }),
+
+/***/ 8588:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.profiles = void 0;
+exports.getProfile = getProfile;
+const azure_devops_1 = __importDefault(__nccwpck_require__(3565));
+const docker_1 = __importDefault(__nccwpck_require__(970));
+const github_action_1 = __importDefault(__nccwpck_require__(1216));
+const jenkins_1 = __importDefault(__nccwpck_require__(2806));
+const k8s_1 = __importDefault(__nccwpck_require__(8200));
+const task_1 = __importDefault(__nccwpck_require__(1535));
+const team_city_1 = __importDefault(__nccwpck_require__(271));
+exports.profiles = {
+    [github_action_1.default.name]: github_action_1.default,
+    [azure_devops_1.default.name]: azure_devops_1.default,
+    [team_city_1.default.name]: team_city_1.default,
+    [jenkins_1.default.name]: jenkins_1.default,
+    [docker_1.default.name]: docker_1.default,
+    [k8s_1.default.name]: k8s_1.default,
+    [task_1.default.name]: task_1.default,
+};
+function getProfile(platform) {
+    if (platform && exports.profiles[platform]) {
+        return exports.profiles[platform];
+    }
+    return task_1.default;
+}
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 2806:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.jenkinsProfile = void 0;
+const common_1 = __nccwpck_require__(8663);
+function repoName(gitUrl) {
+    if (!gitUrl) {
+        return undefined;
+    }
+    const match = gitUrl.replace(/\/+$/, '').match(/([^/]+)\.git$/);
+    return match ? match[1] : gitUrl.split('/').pop();
+}
+exports.jenkinsProfile = {
+    name: 'jenkins',
+    applyEnv(env) {
+        const set = (key, value) => {
+            if (value) {
+                env[key] = value;
+            }
+        };
+        set('CI_PROVIDER', 'jenkins');
+        set('BUILD_ID', process.env.BUILD_ID);
+        set('BUILD_NUMBER', process.env.BUILD_NUMBER);
+        set('BUILD_BRANCH', process.env.GIT_BRANCH || process.env.BRANCH_NAME);
+        set('BUILD_COMMIT', process.env.GIT_COMMIT);
+        set('BUILD_REPO', repoName(process.env.GIT_URL));
+        set('BUILD_REF', process.env.GIT_BRANCH);
+        set('BUILD_DEFINITION_NAME', process.env.JOB_NAME);
+        set('BUILD_URL', process.env.BUILD_URL);
+        set('BUILD_REPO_URI', process.env.GIT_URL);
+        set('JOB_ID', process.env.BUILD_ID);
+        set('JOB_NAME', process.env.JOB_NAME);
+        set('BUILD_REQUESTED_FOR', process.env.CHANGE_AUTHOR);
+        set('AGENT_NAME', process.env.NODE_NAME);
+    },
+    pipelineName() {
+        return process.env.JOB_NAME || 'jenkins';
+    },
+    pipelineTags() {
+        const branch = process.env.GIT_BRANCH || process.env.BRANCH_NAME;
+        const commit = process.env.GIT_COMMIT;
+        const repo = repoName(process.env.GIT_URL);
+        return (0, common_1.pickStrings)({
+            definition_name: process.env.JOB_NAME,
+            build_id: process.env.BUILD_ID,
+            build_number: process.env.BUILD_NUMBER,
+            branch,
+            commit,
+            repo,
+            ci_provider: 'jenkins',
+            'ci.pipeline.id': process.env.BUILD_ID,
+            'ci.pipeline.name': process.env.JOB_NAME,
+            'ci.pipeline.run.id': process.env.BUILD_ID,
+            'ci.pipeline.run.number': process.env.BUILD_NUMBER,
+            'ci.pipeline.run.url': process.env.BUILD_URL,
+            'ci.pipeline.run.user': process.env.CHANGE_AUTHOR,
+            'ci.pipeline.agent.name': process.env.NODE_NAME,
+            'ci.job.id': process.env.BUILD_ID,
+            'ci.job.name': process.env.JOB_NAME,
+            'ci.step.name': 'ci-apm-trace',
+            'ci.build.ref': branch,
+            'ci.build.commit': commit,
+            'ci.build.repo': repo,
+            'vcs.repository.url': process.env.GIT_URL,
+            'vcs.ref.head.name': process.env.GIT_BRANCH,
+            'vcs.commit.id': commit,
+        });
+    },
+    pipelineCustom() {
+        return (0, common_1.pickValues)({
+            provider: 'jenkins',
+            definition_name: process.env.JOB_NAME,
+            job_base_name: process.env.JOB_BASE_NAME,
+            build_id: process.env.BUILD_ID,
+            build_number: process.env.BUILD_NUMBER,
+            build_tag: process.env.BUILD_TAG,
+            build_url: process.env.BUILD_URL,
+            requested_for: process.env.CHANGE_AUTHOR,
+            agent_name: process.env.NODE_NAME,
+            agent_labels: process.env.NODE_LABELS,
+            workspace: process.env.WORKSPACE,
+            executor_number: process.env.EXECUTOR_NUMBER,
+            git_url: process.env.GIT_URL,
+            git_branch: process.env.GIT_BRANCH,
+            git_commit: process.env.GIT_COMMIT,
+            git_previous_commit: process.env.GIT_PREVIOUS_COMMIT,
+            change_id: process.env.CHANGE_ID,
+            change_url: process.env.CHANGE_URL,
+            change_target: process.env.CHANGE_TARGET,
+            change_title: process.env.CHANGE_TITLE,
+            change_author: process.env.CHANGE_AUTHOR,
+            change_author_email: process.env.CHANGE_AUTHOR_EMAIL,
+            jenkins_url: process.env.JENKINS_URL,
+        });
+    },
+};
+exports["default"] = exports.jenkinsProfile;
+//# sourceMappingURL=jenkins.js.map
+
+/***/ }),
+
+/***/ 8200:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.k8sProfile = void 0;
+const common_1 = __nccwpck_require__(8663);
+function podName() {
+    return process.env.MY_POD_NAME || process.env.KUBERNETES_POD_NAME || process.env.HOSTNAME;
+}
+exports.k8sProfile = {
+    name: 'k8s',
+    applyEnv(env) {
+        const set = (key, value) => {
+            if (value) {
+                env[key] = value;
+            }
+        };
+        const name = podName();
+        set('CI_PROVIDER', 'k8s');
+        set('BUILD_ID', name);
+        set('AGENT_NAME', name);
+        set('RUNNER_OS', process.platform);
+        set('RUNNER_ARCH', process.arch);
+    },
+    pipelineName() {
+        return process.env.CI_PIPELINE_NAME || 'k8s';
+    },
+    pipelineTags() {
+        return (0, common_1.pickStrings)({
+            build_id: podName(),
+            ci_provider: 'k8s',
+            runner_os: process.platform,
+            runner_arch: process.arch,
+            'ci.pipeline.agent.name': podName(),
+            'ci.step.name': 'ci-apm-trace',
+        });
+    },
+    pipelineCustom() {
+        return (0, common_1.pickValues)({
+            provider: 'k8s',
+            pod_name: podName(),
+            pod_namespace: process.env.MY_POD_NAMESPACE || process.env.KUBERNETES_POD_NAMESPACE,
+            pod_ip: process.env.MY_POD_IP,
+            node_name: process.env.MY_NODE_NAME,
+            cluster_host: process.env.KUBERNETES_SERVICE_HOST,
+            cluster_port: process.env.KUBERNETES_SERVICE_PORT,
+            platform: process.platform,
+            arch: process.arch,
+            node_version: process.version,
+        });
+    },
+};
+exports["default"] = exports.k8sProfile;
+//# sourceMappingURL=k8s.js.map
+
+/***/ }),
+
+/***/ 1535:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.taskProfile = void 0;
+const common_1 = __nccwpck_require__(8663);
+exports.taskProfile = {
+    name: 'task',
+    applyEnv(env) {
+        const set = (key, value) => {
+            if (value) {
+                env[key] = value;
+            }
+        };
+        set('CI_PROVIDER', process.env.CI_PROVIDER || 'task');
+        set('BUILD_ID', process.env.BUILD_ID || process.env.CI_PIPELINE_ID || process.env.CI_RUN_ID || process.env.CI_JOB_ID);
+        set('BUILD_NUMBER', process.env.BUILD_NUMBER || process.env.CI_RUN_NUMBER || process.env.CI_PIPELINE_RUN_NUMBER);
+        set('BUILD_BRANCH', process.env.BUILD_BRANCH || process.env.CI_COMMIT_BRANCH);
+        set('BUILD_COMMIT', process.env.BUILD_COMMIT || process.env.CI_COMMIT_SHA);
+        set('BUILD_REPO', process.env.BUILD_REPO || process.env.CI_REPOSITORY);
+        set('BUILD_REPO_URI', process.env.BUILD_REPO_URI || process.env.CI_REPOSITORY_URL);
+        set('BUILD_URL', process.env.BUILD_URL || process.env.CI_PIPELINE_URL || process.env.CI_JOB_URL);
+        set('BUILD_REF', process.env.BUILD_REF || process.env.CI_COMMIT_BRANCH);
+        set('BUILD_DEFINITION_NAME', process.env.BUILD_DEFINITION_NAME || process.env.CI_PIPELINE_NAME);
+        set('JOB_ID', process.env.JOB_ID || process.env.CI_JOB_ID || process.env.CI_RUN_ID);
+        set('JOB_NAME', process.env.JOB_NAME || process.env.CI_JOB_NAME || process.env.CI_TASK_NAME);
+        set('JOB_STATUS', process.env.JOB_STATUS || process.env.CI_JOB_STATUS);
+        set('BUILD_REQUESTED_FOR', process.env.BUILD_REQUESTED_FOR || process.env.CI_TRIGGERING_ACTOR);
+        set('AGENT_NAME', process.env.AGENT_NAME || process.env.CI_RUNNER_NAME || process.env.RUNNER_NAME);
+        set('RUNNER_OS', process.env.RUNNER_OS || process.env.CI_RUNNER_OS);
+        set('RUNNER_ARCH', process.env.RUNNER_ARCH || process.env.CI_RUNNER_ARCH);
+    },
+    pipelineName() {
+        return process.env.CI_PIPELINE_NAME || process.env.BUILD_DEFINITION_NAME || 'ci-pipeline';
+    },
+    pipelineTags() {
+        const branch = process.env.BUILD_BRANCH || process.env.CI_COMMIT_BRANCH;
+        const commit = process.env.BUILD_COMMIT || process.env.CI_COMMIT_SHA;
+        const repo = process.env.BUILD_REPO || process.env.CI_REPOSITORY;
+        const buildId = process.env.BUILD_ID;
+        const buildNumber = process.env.BUILD_NUMBER;
+        return (0, common_1.pickStrings)({
+            definition_name: process.env.BUILD_DEFINITION_NAME || process.env.CI_PIPELINE_NAME,
+            build_id: buildId,
+            build_number: buildNumber,
+            branch,
+            commit,
+            repo,
+            ci_provider: process.env.CI_PROVIDER || 'task',
+            runner_os: process.env.RUNNER_OS,
+            runner_arch: process.env.RUNNER_ARCH,
+            'ci.pipeline.id': process.env.CI_PIPELINE_ID || buildId,
+            'ci.pipeline.name': process.env.CI_PIPELINE_NAME || process.env.BUILD_DEFINITION_NAME,
+            'ci.pipeline.run.id': process.env.CI_RUN_ID || buildId,
+            'ci.pipeline.run.number': process.env.CI_RUN_NUMBER || buildNumber,
+            'ci.pipeline.run.url': process.env.BUILD_URL || process.env.CI_PIPELINE_URL,
+            'ci.pipeline.run.user': process.env.BUILD_REQUESTED_FOR || process.env.CI_TRIGGERING_ACTOR,
+            'ci.pipeline.run.result': process.env.JOB_STATUS || process.env.CI_JOB_STATUS,
+            'ci.pipeline.agent.name': process.env.AGENT_NAME || process.env.CI_RUNNER_NAME,
+            'ci.job.id': process.env.CI_JOB_ID || buildId,
+            'ci.job.name': process.env.CI_JOB_NAME || process.env.CI_TASK_NAME,
+            'ci.job.status': process.env.JOB_STATUS || process.env.CI_JOB_STATUS,
+            'ci.step.name': 'ci-apm-trace',
+            'ci.build.ref': branch,
+            'ci.build.commit': commit,
+            'ci.build.repo': repo,
+            'vcs.repository.url': process.env.BUILD_REPO_URI || process.env.CI_REPOSITORY_URL,
+            'vcs.ref.head.name': process.env.BUILD_REF || branch,
+            'vcs.commit.id': commit,
+        });
+    },
+    pipelineCustom() {
+        return (0, common_1.pickValues)({
+            provider: process.env.CI_PROVIDER || 'task',
+            definition_id: process.env.CI_PIPELINE_ID,
+            definition_name: process.env.CI_PIPELINE_NAME || process.env.BUILD_DEFINITION_NAME,
+            build_id: process.env.BUILD_ID,
+            build_number: process.env.BUILD_NUMBER,
+            build_url: process.env.BUILD_URL || process.env.CI_PIPELINE_URL,
+            task_id: process.env.CI_TASK_ID,
+            task_name: process.env.CI_TASK_NAME,
+            step_name: process.env.CI_STEP_NAME,
+            requested_for: process.env.BUILD_REQUESTED_FOR || process.env.CI_TRIGGERING_ACTOR,
+            agent_name: process.env.AGENT_NAME || process.env.CI_RUNNER_NAME,
+            agent_version: process.env.AGENT_VERSION,
+            job_id: process.env.JOB_ID || process.env.CI_JOB_ID,
+            job_name: process.env.JOB_NAME || process.env.CI_JOB_NAME,
+            job_status: process.env.JOB_STATUS || process.env.CI_JOB_STATUS,
+            project: process.env.CI_PROJECT,
+            repo_uri: process.env.BUILD_REPO_URI || process.env.CI_REPOSITORY_URL,
+            repo: process.env.BUILD_REPO || process.env.CI_REPOSITORY,
+            branch: process.env.BUILD_BRANCH || process.env.CI_COMMIT_BRANCH,
+            commit: process.env.BUILD_COMMIT || process.env.CI_COMMIT_SHA,
+            server_url: process.env.CI_SERVER_URL,
+        });
+    },
+};
+exports["default"] = exports.taskProfile;
+//# sourceMappingURL=task.js.map
+
+/***/ }),
+
+/***/ 271:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.teamCityProfile = void 0;
+const common_1 = __nccwpck_require__(8663);
+function buildUrl() {
+    const serverUrl = process.env.TEAMCITY_SERVER_URL;
+    const buildId = process.env.TEAMCITY_BUILD_ID;
+    const buildTypeId = process.env.TEAMCITY_BUILDCONF_ID;
+    if (serverUrl && buildId) {
+        const base = serverUrl.replace(/\/+$/, '');
+        return buildTypeId
+            ? `${base}/viewLog.html?buildId=${buildId}&buildTypeId=${buildTypeId}`
+            : `${base}/viewLog.html?buildId=${buildId}`;
+    }
+    return process.env.BUILD_URL;
+}
+exports.teamCityProfile = {
+    name: 'team-city',
+    applyEnv(env) {
+        const set = (key, value) => {
+            if (value) {
+                env[key] = value;
+            }
+        };
+        set('CI_PROVIDER', 'team-city');
+        set('BUILD_ID', process.env.TEAMCITY_BUILD_ID);
+        set('BUILD_NUMBER', process.env.BUILD_NUMBER);
+        set('BUILD_BRANCH', process.env.BUILD_VCS_BRANCH || process.env.TEAMCITY_BUILD_BRANCH);
+        set('BUILD_COMMIT', process.env.BUILD_VCS_NUMBER);
+        set('BUILD_DEFINITION_NAME', process.env.TEAMCITY_BUILDCONF_NAME);
+        set('BUILD_URL', buildUrl());
+        set('JOB_ID', process.env.TEAMCITY_BUILD_ID);
+        set('JOB_NAME', process.env.TEAMCITY_BUILDCONF_NAME);
+        set('AGENT_NAME', process.env.AGENT_NAME);
+    },
+    pipelineName() {
+        return process.env.TEAMCITY_BUILDCONF_NAME || 'team-city';
+    },
+    pipelineTags() {
+        const branch = process.env.BUILD_VCS_BRANCH || process.env.TEAMCITY_BUILD_BRANCH;
+        const commit = process.env.BUILD_VCS_NUMBER;
+        return (0, common_1.pickStrings)({
+            definition_name: process.env.TEAMCITY_BUILDCONF_NAME,
+            build_id: process.env.TEAMCITY_BUILD_ID,
+            build_number: process.env.BUILD_NUMBER,
+            branch,
+            commit,
+            ci_provider: 'team-city',
+            'ci.pipeline.id': process.env.TEAMCITY_BUILD_ID,
+            'ci.pipeline.name': process.env.TEAMCITY_BUILDCONF_NAME,
+            'ci.pipeline.run.id': process.env.TEAMCITY_BUILD_ID,
+            'ci.pipeline.run.number': process.env.BUILD_NUMBER,
+            'ci.pipeline.run.url': buildUrl(),
+            'ci.pipeline.agent.name': process.env.AGENT_NAME,
+            'ci.job.id': process.env.TEAMCITY_BUILD_ID,
+            'ci.job.name': process.env.TEAMCITY_BUILDCONF_NAME,
+            'ci.step.name': 'ci-apm-trace',
+            'ci.build.ref': branch,
+            'ci.build.commit': commit,
+        });
+    },
+    pipelineCustom() {
+        return (0, common_1.pickValues)({
+            provider: 'team-city',
+            definition_id: process.env.TEAMCITY_BUILDCONF_ID,
+            definition_name: process.env.TEAMCITY_BUILDCONF_NAME,
+            build_type_id: process.env.TEAMCITY_BUILDCONF_ID,
+            project_id: process.env.TEAMCITY_PROJECT_ID,
+            project_name: process.env.TEAMCITY_PROJECT_NAME,
+            build_id: process.env.TEAMCITY_BUILD_ID,
+            build_number: process.env.BUILD_NUMBER,
+            build_url: buildUrl(),
+            agent_name: process.env.AGENT_NAME,
+            branch: process.env.BUILD_VCS_BRANCH || process.env.TEAMCITY_BUILD_BRANCH,
+            commit: process.env.BUILD_VCS_NUMBER,
+            server_version: process.env.TEAMCITY_VERSION,
+        });
+    },
+};
+exports["default"] = exports.teamCityProfile;
+//# sourceMappingURL=team-city.js.map
 
 /***/ }),
 

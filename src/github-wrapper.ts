@@ -21,6 +21,7 @@ function saveState(name: string, value: string): void {
 function buildEnv(apmServer?: string, apmToken?: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env }
   applyGitHubEnv(env)
+  env.APM_CI_PLATFORM = 'github-action'
   if (apmServer) {
     env.ELASTIC_APM_SERVER_URL = apmServer
   }

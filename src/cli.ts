@@ -2,8 +2,8 @@
 
 import yargs from 'yargs/yargs'
 import { hideBin } from 'yargs/helpers'
-import { initApm } from './apm'
 import { createLifecycle, PipelineLabels } from './lifecycle'
+import { initCliApm } from './cli-common'
 import { runPre } from './cli-pre'
 import { runMain } from './cli-main'
 import { runPost } from './cli-post'
@@ -16,6 +16,7 @@ interface CliArgs {
   commit?: string
   repo?: string
   'ci-provider'?: string
+  'ci_platform'?: string
   fail: boolean
   debug: boolean
   _: string[]
@@ -23,11 +24,19 @@ interface CliArgs {
 
 interface SubCommandArgs {
   'trace-name': string
+  'ci_platform'?: string
   fail: boolean
   debug: boolean
 }
 
+function applyCiPlatform(value: string | undefined): void {
+  if (value) {
+    process.env.APM_CI_PLATFORM = value
+  }
+}
+
 function applyEnv(args: CliArgs): void {
+  applyCiPlatform(args['ci_platform'])
   if (args['build-id']) {
     process.env.BUILD_ID = args['build-id']
   }
@@ -51,7 +60,7 @@ function applyEnv(args: CliArgs): void {
 async function runFlat(args: CliArgs): Promise<void> {
   applyEnv(args)
 
-  initApm({ debug: args.debug })
+  initCliApm({ debug: args.debug })
 
   const lifecycle = createLifecycle()
   const labels: PipelineLabels = {
@@ -98,6 +107,7 @@ async function main(): Promise<void> {
         }),
       async (argv) => {
         const args = argv as unknown as SubCommandArgs
+        applyCiPlatform(args['ci_platform'])
         try {
           await runPre({ traceName: args['trace-name'], debug: args.debug })
         } catch (error) {
@@ -125,6 +135,7 @@ async function main(): Promise<void> {
         }),
       async (argv) => {
         const args = argv as unknown as SubCommandArgs
+        applyCiPlatform(args['ci_platform'])
         try {
           await runMain({ traceName: args['trace-name'], debug: args.debug })
         } catch (error) {
@@ -157,6 +168,7 @@ async function main(): Promise<void> {
         }),
       async (argv) => {
         const args = argv as unknown as SubCommandArgs
+        applyCiPlatform(args['ci_platform'])
         try {
           await runPost({ traceName: args['trace-name'], fail: args.fail, debug: args.debug })
           process.exitCode = args.fail ? 1 : 0
@@ -196,6 +208,11 @@ async function main(): Promise<void> {
       'ci-provider': {
         type: 'string',
         description: 'CI provider name',
+      },
+      'ci_platform': {
+        type: 'string',
+        default: process.env.APM_CI_PLATFORM,
+        description: 'CI platform profile to use (github-action, azure-devops, team-city, jenkins, docker, k8s, task)',
       },
       fail: {
         type: 'boolean',

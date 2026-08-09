@@ -33,6 +33,8 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.getCiPlatform = getCiPlatform;
+exports.selectedProfile = selectedProfile;
 exports.getEnvConfig = getEnvConfig;
 exports.initCliApm = initCliApm;
 exports.randomHex = randomHex;
@@ -44,16 +46,25 @@ exports.pipelineCustom = pipelineCustom;
 const crypto_1 = require("crypto");
 const os = __importStar(require("os"));
 const apm_1 = require("./apm");
+const profiles_1 = require("./profiles");
 function isTruthy(value) {
     const v = (value ?? '').toLowerCase();
     return v === 'true' || v === '1';
 }
+function getCiPlatform() {
+    return process.env.APM_CI_PLATFORM?.trim() || undefined;
+}
+function selectedProfile() {
+    return (0, profiles_1.getProfile)(getCiPlatform());
+}
 function getEnvConfig() {
+    const profile = selectedProfile();
+    profile.applyEnv(process.env);
     return {
         serverUrl: process.env.ELASTIC_APM_SERVER_URL,
         secretToken: process.env.ELASTIC_APM_SECRET_TOKEN,
         apiKey: process.env.ELASTIC_APM_API_KEY,
-        serviceName: process.env.ELASTIC_APM_SERVICE_NAME || (process.env.GITHUB_ACTIONS === 'true' ? 'github-action' : 'cli'),
+        serviceName: process.env.ELASTIC_APM_SERVICE_NAME || profile.name,
         debug: isTruthy(process.env.ELASTIC_APM_DEBUG),
     };
 }
@@ -74,52 +85,13 @@ function randomHex(bytes) {
     return (0, crypto_1.randomBytes)(bytes).toString('hex');
 }
 function providerName() {
-    return process.env.CI_PROVIDER || 'cli';
+    return selectedProfile().name;
 }
 function pipelineName() {
-    return process.env.BUILD_DEFINITION_NAME || process.env.CI_PIPELINE_NAME || 'ci-pipeline';
+    return selectedProfile().pipelineName();
 }
 function pipelineTags() {
-    const tags = {};
-    const add = (key, value) => {
-        if (value) {
-            tags[key] = value;
-        }
-    };
-    const buildId = process.env.BUILD_ID;
-    const buildNumber = process.env.BUILD_NUMBER;
-    const branch = process.env.BUILD_BRANCH;
-    const commit = process.env.BUILD_COMMIT;
-    const repo = process.env.BUILD_REPO;
-    const provider = providerName();
-    add('definition_name', pipelineName());
-    add('build_id', buildId);
-    add('build_number', buildNumber);
-    add('branch', branch);
-    add('commit', commit);
-    add('repo', repo);
-    add('ci_provider', provider);
-    add('runner_os', process.env.RUNNER_OS);
-    add('runner_arch', process.env.RUNNER_ARCH);
-    add('ci.pipeline.id', buildId);
-    add('ci.pipeline.name', pipelineName());
-    add('ci.pipeline.run.id', buildId);
-    add('ci.pipeline.run.number', buildNumber);
-    add('ci.pipeline.run.url', process.env.BUILD_URL);
-    add('ci.pipeline.run.user', process.env.GITHUB_ACTOR || process.env.BUILD_REQUESTED_FOR);
-    add('ci.pipeline.run.result', process.env.JOB_STATUS);
-    add('ci.pipeline.agent.name', process.env.AGENT_NAME || process.env.RUNNER_NAME);
-    add('ci.job.id', process.env.JOB_ID);
-    add('ci.job.name', process.env.JOB_NAME);
-    add('ci.job.status', process.env.JOB_STATUS);
-    add('ci.step.name', 'ci-apm-trace');
-    add('ci.build.ref', branch);
-    add('ci.build.commit', commit);
-    add('ci.build.repo', repo);
-    add('vcs.repository.url', process.env.BUILD_REPO_URI);
-    add('vcs.ref.head.name', process.env.BUILD_REF || branch);
-    add('vcs.commit.id', commit);
-    return tags;
+    return selectedProfile().pipelineTags();
 }
 function pipelineUser() {
     const user = {};
@@ -138,23 +110,6 @@ function pipelineUser() {
     return user;
 }
 function pipelineCustom() {
-    const custom = {};
-    const add = (key, value) => {
-        if (value) {
-            custom[key] = value;
-        }
-    };
-    add('definition_id', process.env.BUILD_DEFINITION_ID);
-    add('definition_name', pipelineName());
-    add('build_id', process.env.BUILD_ID);
-    add('build_number', process.env.BUILD_NUMBER);
-    add('build_url', process.env.BUILD_URL);
-    add('requested_for', process.env.GITHUB_ACTOR || process.env.BUILD_REQUESTED_FOR);
-    add('agent_name', process.env.AGENT_NAME || process.env.RUNNER_NAME);
-    add('agent_version', process.env.AGENT_VERSION);
-    add('job_id', process.env.JOB_ID);
-    add('job_name', process.env.JOB_NAME);
-    add('repo_uri', process.env.BUILD_REPO_URI);
-    return custom;
+    return selectedProfile().pipelineCustom();
 }
 //# sourceMappingURL=cli-common.js.map
