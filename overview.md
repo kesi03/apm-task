@@ -4,6 +4,18 @@ Sends **CI pipeline traces to [Elastic APM](https://www.elastic.co/apm)** from y
 
 The `CiApmTrace@1` task opens a **Job Start** span before the job (`PreJob` handler), records a **Main Task Execution** span, and closes the **Job End** span afterwards while sending the wrapping pipeline transaction — named from the `traceName` input with the build ID appended — plus **errors** when the job fails and **metrics** (`ci.job.duration.ms`, `ci.job.success`) on every run.
 
+## Also available as
+
+The same client also runs on other platforms without the Azure extension:
+
+- **npm / CLI** — `npm install -g @mockholm/ci-apm-trace` and run `ci-apm-trace` anywhere, including directly in Azure Pipelines with `--ci_platform azure-devops`.
+- **Docker** — `docker run mockholm/ci-apm-trace ...` (published image, no build needed).
+- **Kubernetes** — a ready-made Job manifest (`k8s.yml`).
+- **GitHub Action** — a native `uses:` step for GitHub Actions.
+- **go-task** — a `Taskfile` wraps the CLI for local runs and CI orchestration.
+
+See the repository README for details and the ready-made npm/task/docker client pipelines for Azure Pipelines.
+
 ## Set up
 
 1. Install the extension into your organization.
@@ -64,4 +76,4 @@ steps:
 
 ## Source & feedback
 
-Built from the open source [`ci-apm-trace`](https://github.com/your-org/ci-apm-trace) repository. Please report issues and feature requests there.
+Built from the open source [`ci-apm-trace`](https://github.com/mockholm/ci-apm-trace) repository. Please report issues and feature requests there.
