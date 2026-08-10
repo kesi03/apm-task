@@ -764,6 +764,97 @@ Set these pipeline variables (project **Pipelines > Edit > Variables**):
 - `ELASTIC_APM_SECRET_TOKEN` (secret)
 - `traceName` (optional, defaults to `npm`/`task`/`docker`)
 
+### Team City
+In the example here Team city uses the npm client.
+#### Params
+| Key                           | Type        | Value                                                                                           |
+|-------------------------------|-------------|-------------------------------------------------------------------------------------------------|
+| env.ELASTIC_APM_SECRET_TOKEN | password    | credentialsJSON:52e0036f-2008-4145-9122-c11f392bdd9a                                           |
+| env.PLATFORM_NAME            | parameter   | team-city                                                                                       |
+| env.TRACE_NAME               | parameter   | teamcity-tracer                                                                                 |
+| env.ELASTIC_APM_SERVER_URL   | parameter   | https://my-observability-project-d54a32.apm.europe-west2.gcp.elastic.cloud:443                  |
+
+
+Here is the kotlin code:
+```kotlin
+package buildTypes
+
+import jetbrains.buildServer.configs.kotlin.*
+import jetbrains.buildServer.configs.kotlin.BuildType
+import jetbrains.buildServer.configs.kotlin.buildSteps.nodeJS
+import jetbrains.buildServer.configs.kotlin.buildSteps.script
+import jetbrains.buildServer.configs.kotlin.ui.*
+
+object Amp : BuildType({
+    id("RootProjectId_Project_Environments_Development_Amp")
+    name = "Amp"
+
+    // params
+    params {
+        password("env.ELASTIC_APM_SECRET_TOKEN", "credentialsJSON:52e0036f-2008-4145-9122-c11f392bdd9a")
+        param("env.PLATFORM_NAME", "team-city")
+        param("env.TRACE_NAME", "teamcity-tracer")
+        param("env.ELASTIC_APM_SERVER_URL", "https://my-observability-project-d54a32.apm.europe-west2.gcp.elastic.cloud:443")
+    }
+
+    // git repo
+    vcs {
+        root(RelativeId("RootProjectId_Project_Environments_Development_HttpsGithubComKesi03apmTaskRefsHeadsMain"))
+    }
+
+    // steps
+     steps {
+        // 1. install npm client as global
+        nodeJS {
+            name = "install"
+            id = "install"
+            shellScript = "npm install -G @mockholm/ci-apm-trace"
+        }
+        // 2. run pre trace
+        nodeJS {
+            name = "pre-trace"
+            id = "pre_trace"
+            shellScript = """
+                npx ci-apm-trace pre --trace-name "%env.TRACE_NAME%" --ci_platform "%env.PLATFORM_NAME%" | tee apm.env
+                
+                grep '^export APM_' apm.env | while IFS='=' read -r k v; do
+                  key=${'$'}(echo "${'$'}k" | cut -d' ' -f2)
+                  echo "##teamcity[setParameter name='env.${'$'}{key}' value='${'$'}{v}']"
+                done
+            """.trimIndent()
+        }
+        // 3. version
+        nodeJS {
+            name = "version"
+            id = "version"
+            shellScript = "npx ci-apm-trace --version"
+        }
+        // 4 sleep
+        script {
+            name = "sleep"
+            id = "sleep"
+            scriptContent = """
+                sleep 10
+                echo "done sleeping"
+            """.trimIndent()
+        }
+        // 5. run the span trace
+        nodeJS {
+            name = "main"
+            id = "main"
+            shellScript = """npx ci-apm-trace main --trace-name "%env.TRACE_NAME%" --ci_platform "%env.PLATFORM_NAME%""""
+        }
+        // 6. end
+        nodeJS {
+            name = "post"
+            id = "post"
+            shellScript = """npx ci-apm-trace post --trace-name "%env.TRACE_NAME%" --ci_platform "%env.PLATFORM_NAME%""""
+        }
+    }
+
+})
+```
+
 ### How the pipelines hand off state
 
 Each pipeline runs `pre` first, captures the printed `export APM_*` lines, and
@@ -799,3 +890,4 @@ export HTTPS_PROXY=http://proxy.corp.example:3128
 export NO_PROXY=localhost,127.0.0.1,.internal.example
 ci-apm-trace --trace-name release --build-id 42
 ```
+
