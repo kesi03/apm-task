@@ -46,6 +46,13 @@ async function buildEcsMetricsRecord(serviceName, serviceVersion = '1.0.0') {
     const mem = await si.mem();
     const disks = await si.fsSize();
     const osInfo = await si.osInfo();
+    const processCpuUsage = process.cpuUsage();
+    const cpuCores = Math.max(cpu.cores, 1);
+    const uptimeSec = process.uptime();
+    const processCpuTotalNormPct = uptimeSec > 0
+        ? Math.min(((processCpuUsage.user + processCpuUsage.system) / 1e6) / (uptimeSec * cpuCores), 1)
+        : 0;
+    const systemCpuTotalNormPct = cpuLoad.currentLoad / 100;
     return {
         '@timestamp': timestamp,
         'ecs.version': exports.ECS_VERSION,
@@ -61,7 +68,9 @@ async function buildEcsMetricsRecord(serviceName, serviceVersion = '1.0.0') {
         'host.os.name': osInfo.distro,
         'host.os.version': osInfo.release,
         'system.cpu.cores': cpu.cores,
-        'system.cpu.total.pct': cpuLoad.currentLoad / 100,
+        'system.cpu.total.pct': systemCpuTotalNormPct,
+        'system.cpu.total.norm.pct': systemCpuTotalNormPct,
+        'system.process.cpu.total.norm.pct': processCpuTotalNormPct,
         'system.cpu.user.pct': cpuLoad.currentLoadUser / 100,
         'system.cpu.system.pct': cpuLoad.currentLoadSystem / 100,
         'system.memory.total': mem.total,
@@ -93,6 +102,8 @@ async function sendEcsMetrics(agent, options) {
             samples: {
                 'system.cpu.cores': record['system.cpu.cores'],
                 'system.cpu.total.pct': record['system.cpu.total.pct'],
+                'system.cpu.total.norm.pct': record['system.cpu.total.norm.pct'],
+                'system.process.cpu.total.norm.pct': record['system.process.cpu.total.norm.pct'],
                 'system.cpu.user.pct': record['system.cpu.user.pct'],
                 'system.cpu.system.pct': record['system.cpu.system.pct'],
                 'system.memory.total': record['system.memory.total'],

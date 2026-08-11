@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.runPost = runPost;
 const apm_1 = require("./apm");
 const ecs_metrics_1 = require("./ecs-metrics");
+const runtime_metrics_1 = require("./runtime-metrics");
 const cli_common_1 = require("./cli-common");
 async function runPost(options) {
     (0, cli_common_1.initCliApm)({ debug: options.debug });
@@ -76,6 +77,12 @@ async function runPost(options) {
         tags,
     });
     await (0, ecs_metrics_1.sendEcsMetrics)(apm_1.apm, {
+        serviceName: (0, cli_common_1.serviceName)(),
+        serviceVersion: buildNumber,
+        transaction: { name: transactionName, type: 'pipeline' },
+        tags,
+    });
+    await (0, runtime_metrics_1.sendRuntimeMetrics)(apm_1.apm, {
         serviceName: (0, cli_common_1.serviceName)(),
         serviceVersion: buildNumber,
         transaction: { name: transactionName, type: 'pipeline' },

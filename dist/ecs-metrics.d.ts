@@ -23,6 +23,8 @@ export interface EcsMetricsRecord {
     'host.os.version': string;
     'system.cpu.cores': number;
     'system.cpu.total.pct': number;
+    'system.cpu.total.norm.pct': number;
+    'system.process.cpu.total.norm.pct': number;
     'system.cpu.user.pct': number;
     'system.cpu.system.pct': number;
     'system.memory.total': number;

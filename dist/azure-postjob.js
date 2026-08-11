@@ -36,6 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const tl = __importStar(require("azure-pipelines-task-lib"));
 const apm_1 = require("./apm");
 const ecs_metrics_1 = require("./ecs-metrics");
+const runtime_metrics_1 = require("./runtime-metrics");
 const azure_common_1 = require("./azure-common");
 async function run() {
     (0, azure_common_1.initAzureApm)();
@@ -111,6 +112,12 @@ async function run() {
         tags,
     });
     await (0, ecs_metrics_1.sendEcsMetrics)(apm_1.apm, {
+        serviceName: 'azure-devops',
+        serviceVersion: buildNumber,
+        transaction: { name: transactionName, type: 'pipeline' },
+        tags,
+    });
+    await (0, runtime_metrics_1.sendRuntimeMetrics)(apm_1.apm, {
         serviceName: 'azure-devops',
         serviceVersion: buildNumber,
         transaction: { name: transactionName, type: 'pipeline' },

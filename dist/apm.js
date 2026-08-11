@@ -120,6 +120,7 @@ class ApmClient {
         this.serviceVersion = nonEmpty(options.serviceVersion ?? process.env.ELASTIC_APM_SERVICE_VERSION);
         this.serviceNode = nonEmpty(options.serviceNode);
         this.serviceEnvironment = nonEmpty(options.serviceEnvironment ?? process.env.ELASTIC_APM_ENVIRONMENT) ?? 'ci';
+        this.agentName = nonEmpty(options.agentName) ?? 'nodejs';
         this.globalLabels = options.globalLabels ?? {};
         this.ephemeralId = randomId();
         const envDebug = (process.env.ELASTIC_APM_DEBUG ?? '').toLowerCase();
@@ -392,7 +393,7 @@ class ApmClient {
             environment: this.serviceEnvironment,
             node: this.serviceNode ? { configured_name: this.serviceNode } : undefined,
             agent: {
-                name: 'ci-apm-trace',
+                name: this.agentName,
                 version: package_json_1.default.version,
                 ephemeral_id: this.ephemeralId,
             },

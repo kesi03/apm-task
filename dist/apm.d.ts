@@ -6,6 +6,7 @@ export interface ApmInitOptions {
     serviceVersion?: string;
     serviceNode?: string;
     serviceEnvironment?: string;
+    agentName?: string;
     globalLabels?: Record<string, string | number | boolean>;
     debug?: boolean;
 }

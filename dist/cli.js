@@ -128,6 +128,7 @@ class ApmClient {
         this.serviceVersion = nonEmpty(options.serviceVersion ?? process.env.ELASTIC_APM_SERVICE_VERSION);
         this.serviceNode = nonEmpty(options.serviceNode);
         this.serviceEnvironment = nonEmpty(options.serviceEnvironment ?? process.env.ELASTIC_APM_ENVIRONMENT) ?? 'ci';
+        this.agentName = nonEmpty(options.agentName) ?? 'nodejs';
         this.globalLabels = options.globalLabels ?? {};
         this.ephemeralId = randomId();
         const envDebug = (process.env.ELASTIC_APM_DEBUG ?? '').toLowerCase();
@@ -400,7 +401,7 @@ class ApmClient {
             environment: this.serviceEnvironment,
             node: this.serviceNode ? { configured_name: this.serviceNode } : undefined,
             agent: {
-                name: 'ci-apm-trace',
+                name: this.agentName,
                 version: package_json_1.default.version,
                 ephemeral_id: this.ephemeralId,
             },
@@ -691,6 +692,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.runPost = runPost;
 const apm_1 = __nccwpck_require__(5021);
 const ecs_metrics_1 = __nccwpck_require__(9916);
+const runtime_metrics_1 = __nccwpck_require__(4169);
 const cli_common_1 = __nccwpck_require__(6645);
 async function runPost(options) {
     (0, cli_common_1.initCliApm)({ debug: options.debug });
@@ -764,6 +766,12 @@ async function runPost(options) {
         tags,
     });
     await (0, ecs_metrics_1.sendEcsMetrics)(apm_1.apm, {
+        serviceName: (0, cli_common_1.serviceName)(),
+        serviceVersion: buildNumber,
+        transaction: { name: transactionName, type: 'pipeline' },
+        tags,
+    });
+    await (0, runtime_metrics_1.sendRuntimeMetrics)(apm_1.apm, {
         serviceName: (0, cli_common_1.serviceName)(),
         serviceVersion: buildNumber,
         transaction: { name: transactionName, type: 'pipeline' },
@@ -1171,6 +1179,13 @@ async function buildEcsMetricsRecord(serviceName, serviceVersion = '1.0.0') {
     const mem = await si.mem();
     const disks = await si.fsSize();
     const osInfo = await si.osInfo();
+    const processCpuUsage = process.cpuUsage();
+    const cpuCores = Math.max(cpu.cores, 1);
+    const uptimeSec = process.uptime();
+    const processCpuTotalNormPct = uptimeSec > 0
+        ? Math.min(((processCpuUsage.user + processCpuUsage.system) / 1e6) / (uptimeSec * cpuCores), 1)
+        : 0;
+    const systemCpuTotalNormPct = cpuLoad.currentLoad / 100;
     return {
         '@timestamp': timestamp,
         'ecs.version': exports.ECS_VERSION,
@@ -1186,7 +1201,9 @@ async function buildEcsMetricsRecord(serviceName, serviceVersion = '1.0.0') {
         'host.os.name': osInfo.distro,
         'host.os.version': osInfo.release,
         'system.cpu.cores': cpu.cores,
-        'system.cpu.total.pct': cpuLoad.currentLoad / 100,
+        'system.cpu.total.pct': systemCpuTotalNormPct,
+        'system.cpu.total.norm.pct': systemCpuTotalNormPct,
+        'system.process.cpu.total.norm.pct': processCpuTotalNormPct,
         'system.cpu.user.pct': cpuLoad.currentLoadUser / 100,
         'system.cpu.system.pct': cpuLoad.currentLoadSystem / 100,
         'system.memory.total': mem.total,
@@ -1218,6 +1235,8 @@ async function sendEcsMetrics(agent, options) {
             samples: {
                 'system.cpu.cores': record['system.cpu.cores'],
                 'system.cpu.total.pct': record['system.cpu.total.pct'],
+                'system.cpu.total.norm.pct': record['system.cpu.total.norm.pct'],
+                'system.process.cpu.total.norm.pct': record['system.process.cpu.total.norm.pct'],
                 'system.cpu.user.pct': record['system.cpu.user.pct'],
                 'system.cpu.system.pct': record['system.cpu.system.pct'],
                 'system.memory.total': record['system.memory.total'],
@@ -2153,6 +2172,88 @@ exports.teamCityProfile = {
 };
 exports["default"] = exports.teamCityProfile;
 //# sourceMappingURL=team-city.js.map
+
+/***/ }),
+
+/***/ 4169:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.sendRuntimeMetrics = sendRuntimeMetrics;
+function countActive(source) {
+    if (typeof source !== 'function') {
+        return 0;
+    }
+    try {
+        const items = source.call(process);
+        return Array.isArray(items) ? items.length : 0;
+    }
+    catch {
+        return 0;
+    }
+}
+function sampleEventLoopDelay(windowMs = 300) {
+    return new Promise((resolve) => {
+        const baselineMs = 1;
+        let last = process.hrtime.bigint();
+        const samples = [];
+        const deadline = Date.now() + windowMs;
+        const finish = () => {
+            const avg = samples.length > 0 ? samples.reduce((a, b) => a + b, 0) / samples.length : 0;
+            resolve(Math.max(0, avg - baselineMs));
+        };
+        const timer = setTimeout(finish, windowMs);
+        if (typeof timer.unref === 'function') {
+            timer.unref();
+        }
+        const tick = () => {
+            const now = process.hrtime.bigint();
+            const delayMs = Number((now - last) / 1000000n);
+            last = now;
+            samples.push(delayMs);
+            if (Date.now() >= deadline) {
+                clearTimeout(timer);
+                finish();
+            }
+            else {
+                setImmediate(tick);
+            }
+        };
+        setImmediate(tick);
+    });
+}
+async function sendRuntimeMetrics(agent, options) {
+    try {
+        const memory = process.memoryUsage();
+        const internalProcess = process;
+        const eventLoopDelay = await sampleEventLoopDelay();
+        await agent.sendMetric({
+            name: 'nodejs',
+            timestampMs: Date.now(),
+            samples: {
+                'nodejs.memory.heap.allocated.bytes': memory.heapTotal,
+                'nodejs.memory.heap.used.bytes': memory.heapUsed,
+                'nodejs.memory.external.bytes': memory.external,
+                'nodejs.memory.arrayBuffers.bytes': memory.arrayBuffers ?? 0,
+                'nodejs.handles.active': countActive(internalProcess._getActiveHandles),
+                'nodejs.requests.active': countActive(internalProcess._getActiveRequests),
+                'nodejs.eventloop.delay.avg.ms': eventLoopDelay,
+            },
+            transaction: options.transaction,
+            tags: {
+                'metricset.name': 'nodejs',
+                ...options.tags,
+            },
+        });
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`ci-apm-trace: failed to collect/send Node.js runtime metrics: ${message}`);
+    }
+}
+//# sourceMappingURL=runtime-metrics.js.map
 
 /***/ }),
 
@@ -37468,7 +37569,7 @@ module.exports = {"rE":"5.33.1"};
 /***/ ((module) => {
 
 "use strict";
-module.exports = /*#__PURE__*/JSON.parse('{"name":"@mockholm/ci-apm-trace","version":"1.1.15","description":"Sends CI pipeline traces to Elastic APM","main":"dist/lifecycle.js","bin":{"ci-apm-trace":"dist/cli.js"},"files":["dist"],"scripts":{"build":"tsc -p tsconfig.json","typecheck":"tsc --noEmit","start":"node dist/cli.js","cli":"node dist/cli.js","cli:pre":"node dist/cli.js pre","cli:main":"node dist/cli.js main","cli:post":"node dist/cli.js post","icons":"node scripts/gen-icon.js","bundle:github":"node scripts/bundle-github.js","package:azure":"node scripts/package-azure.js"},"engines":{"node":">=18"},"dependencies":{"axios":"^1.19.0","azure-pipelines-task-lib":"^5.0.0","systeminformation":"^5.33.1","yargs":"^17.7.2"},"devDependencies":{"@types/node":"^20.14.0","@types/yargs":"^17.0.32","@vercel/ncc":"^0.44.1","tfx-cli":"^0.23.4","typescript":"^5.5.0"}}');
+module.exports = /*#__PURE__*/JSON.parse('{"name":"@mockholm/ci-apm-trace","version":"1.1.16","description":"Sends CI pipeline traces to Elastic APM","main":"dist/lifecycle.js","bin":{"ci-apm-trace":"dist/cli.js"},"files":["dist"],"scripts":{"build":"tsc -p tsconfig.json","typecheck":"tsc --noEmit","start":"node dist/cli.js","cli":"node dist/cli.js","cli:pre":"node dist/cli.js pre","cli:main":"node dist/cli.js main","cli:post":"node dist/cli.js post","icons":"node scripts/gen-icon.js","bundle:github":"node scripts/bundle-github.js","package:azure":"node scripts/package-azure.js"},"engines":{"node":">=18"},"dependencies":{"axios":"^1.19.0","azure-pipelines-task-lib":"^5.0.0","systeminformation":"^5.33.1","yargs":"^17.7.2"},"devDependencies":{"@types/node":"^20.14.0","@types/yargs":"^17.0.32","@vercel/ncc":"^0.44.1","tfx-cli":"^0.23.4","typescript":"^5.5.0"}}');
 
 /***/ })
 
