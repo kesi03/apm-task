@@ -44,6 +44,19 @@ fields and the APM correlation fields (`service.name`, `service.version`,
 in the `metrics-apm.app.*` data stream and can be queried like standard
 system metrics (e.g. `system.cpu.total.pct`, `system.memory.used.pct`).
 
+### Node.js runtime metrics
+
+Every `post` run also sends a `metricset.name: nodejs` runtime metricset from the
+same process, mirroring the fields the official `elastic-apm-node` agent reports:
+`nodejs.memory.heap.used.bytes`, `nodejs.memory.heap.allocated.bytes`,
+`nodejs.memory.external.bytes`, `nodejs.memory.arrayBuffers.bytes`,
+`nodejs.handles.active`, `nodejs.requests.active`, and
+`nodejs.eventloop.delay.avg.ms`. The client reports `agent.name: nodejs` in the
+APM metadata (overridable via the `agentName` init option), so Kibana's
+APM → Metrics tab resolves the Node.js runtime dashboard and the
+`system.cpu.total.norm.pct` / `system.process.cpu.total.norm.pct` fields on the
+`system` metricset populate its CPU charts.
+
 ## Requirements
 
 - Node.js 18+ (20 recommended) — only needed for the npm/CLI and for building from source. The Docker image and Kubernetes Job bundle Node.js.

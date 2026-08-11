@@ -11,6 +11,7 @@ export interface ApmInitOptions {
   serviceVersion?: string
   serviceNode?: string
   serviceEnvironment?: string
+  agentName?: string
   globalLabels?: Record<string, string | number | boolean>
   debug?: boolean
 }
@@ -221,6 +222,7 @@ class ApmClient implements ApmAgent {
   private readonly serviceVersion: string | undefined
   private readonly serviceNode: string | undefined
   private readonly serviceEnvironment: string
+  private readonly agentName: string
   private readonly globalLabels: Record<string, string | number | boolean>
   private readonly ephemeralId: string
   private readonly debug: boolean
@@ -252,6 +254,7 @@ class ApmClient implements ApmAgent {
     this.serviceVersion = nonEmpty(options.serviceVersion ?? process.env.ELASTIC_APM_SERVICE_VERSION)
     this.serviceNode = nonEmpty(options.serviceNode)
     this.serviceEnvironment = nonEmpty(options.serviceEnvironment ?? process.env.ELASTIC_APM_ENVIRONMENT) ?? 'ci'
+    this.agentName = nonEmpty(options.agentName) ?? 'nodejs'
     this.globalLabels = options.globalLabels ?? {}
     this.ephemeralId = randomId()
     const envDebug = (process.env.ELASTIC_APM_DEBUG ?? '').toLowerCase()
@@ -533,7 +536,7 @@ class ApmClient implements ApmAgent {
       environment: this.serviceEnvironment,
       node: this.serviceNode ? { configured_name: this.serviceNode } : undefined,
       agent: {
-        name: 'ci-apm-trace',
+        name: this.agentName,
         version: pkg.version,
         ephemeral_id: this.ephemeralId,
       },

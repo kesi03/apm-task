@@ -1,5 +1,6 @@
 import { apm } from './apm'
 import { sendEcsMetrics } from './ecs-metrics'
+import { sendRuntimeMetrics } from './runtime-metrics'
 import {
   initCliApm,
   pipelineCustom,
@@ -97,6 +98,13 @@ export async function runPost(options: CliPostOptions): Promise<void> {
   })
 
   await sendEcsMetrics(apm, {
+    serviceName: serviceName(),
+    serviceVersion: buildNumber,
+    transaction: { name: transactionName, type: 'pipeline' },
+    tags,
+  })
+
+  await sendRuntimeMetrics(apm, {
     serviceName: serviceName(),
     serviceVersion: buildNumber,
     transaction: { name: transactionName, type: 'pipeline' },

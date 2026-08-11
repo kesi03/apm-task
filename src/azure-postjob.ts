@@ -1,6 +1,7 @@
 import * as tl from 'azure-pipelines-task-lib'
 import { apm } from './apm'
 import { sendEcsMetrics } from './ecs-metrics'
+import { sendRuntimeMetrics } from './runtime-metrics'
 import { initAzureApm, pipelineCustom, pipelineName, pipelineTags, pipelineUser, randomHex } from './azure-common'
 
 async function run(): Promise<void> {
@@ -85,6 +86,13 @@ async function run(): Promise<void> {
   })
 
   await sendEcsMetrics(apm, {
+    serviceName: 'azure-devops',
+    serviceVersion: buildNumber,
+    transaction: { name: transactionName, type: 'pipeline' },
+    tags,
+  })
+
+  await sendRuntimeMetrics(apm, {
     serviceName: 'azure-devops',
     serviceVersion: buildNumber,
     transaction: { name: transactionName, type: 'pipeline' },
