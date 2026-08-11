@@ -92,6 +92,7 @@ export interface MetricSample {
 
 export interface MetricEventOptions {
   timestampMs?: number
+  name?: string
   samples: Record<string, number | MetricSample>
   transaction?: { name?: string; type?: string }
   tags?: Record<string, string>
@@ -467,6 +468,9 @@ class ApmClient implements ApmAgent {
     const metricset: Record<string, unknown> = {
       samples,
       timestamp: (event.timestampMs ?? Date.now()) * 1000,
+    }
+    if (event.name) {
+      metricset.name = event.name
     }
     if (event.transaction) {
       const transaction = this.compact({ ...event.transaction })

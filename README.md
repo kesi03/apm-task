@@ -32,6 +32,18 @@ The following labels are set on every trace when the corresponding value is avai
 | `runner_os` | — | `RUNNER_OS` env var |
 | `runner_arch` | — | `RUNNER_ARCH` env var |
 
+### ECS system metrics
+
+Every `post` run also collects an **ECS 8.11 system metrics record** of the host
+at pipeline end using `systeminformation`, and sends it as `metricset.name: system`
+APM metricsets (CPU, memory, and one per filesystem mount). The ECS record
+carries the mandatory `event.kind`/`event.category`/`event.type`/`ecs.version`
+fields and the APM correlation fields (`service.name`, `service.version`,
+`agent.name`, `host.name`, OS name/version), with the sample fields
+`system.cpu.*`, `system.memory.*`, and `system.filesystem.*`. The metrics land
+in the `metrics-apm.app.*` data stream and can be queried like standard
+system metrics (e.g. `system.cpu.total.pct`, `system.memory.used.pct`).
+
 ## Requirements
 
 - Node.js 18+ (20 recommended) — only needed for the npm/CLI and for building from source. The Docker image and Kubernetes Job bundle Node.js.
@@ -470,7 +482,7 @@ ready-made examples), or use the [`task` extension](#taskfile) steps.
 
 1. **PreJob handler** (`dist/azure-prejob.js`) opens a `Job Start` span, generates a trace ID, and persists `APM_TRACE_ID`, `APM_SPAN_ID`, and `APM_JOB_START_MS` for the rest of the job.
 2. **Main handler** (`dist/azure-main.js`) records a `Main Task Execution` span under the same trace.
-3. **PostJob handler** (`dist/azure-postjob.js`) closes the `Job End` span, sends the wrapping pipeline **transaction** (named from `traceName`, with the build ID appended), and records an **error** when the job failed and **metrics** (`ci.job.duration.ms`, `ci.job.success`) on every run.
+3. **PostJob handler** (`dist/azure-postjob.js`) closes the `Job End` span, sends the wrapping pipeline **transaction** (named from `traceName`, with the build ID appended), and records an **error** when the job failed and **metrics** (`ci.job.duration.ms`, `ci.job.success`) plus the [ECS system metrics](#ecs-system-metrics) on every run.
 
 All events are POSTed to `{server}/intake/v2/events` as NDJSON with `Authorization: Bearer <token>`.
 

@@ -1,4 +1,5 @@
 import { apm } from './apm'
+import { sendEcsMetrics } from './ecs-metrics'
 import {
   initCliApm,
   pipelineCustom,
@@ -7,6 +8,7 @@ import {
   pipelineUser,
   providerName,
   randomHex,
+  serviceName,
 } from './cli-common'
 
 export interface CliPostOptions {
@@ -90,6 +92,13 @@ export async function runPost(options: CliPostOptions): Promise<void> {
       'ci.job.duration.ms': { value: durationMs, unit: 'ms' },
       'ci.job.success': { value: failed ? 0 : 1, unit: 'bool' },
     },
+    transaction: { name: transactionName, type: 'pipeline' },
+    tags,
+  })
+
+  await sendEcsMetrics(apm, {
+    serviceName: serviceName(),
+    serviceVersion: buildNumber,
     transaction: { name: transactionName, type: 'pipeline' },
     tags,
   })

@@ -59,6 +59,10 @@ export function providerName(): string {
   return selectedProfile().name
 }
 
+export function serviceName(): string {
+  return getEnvConfig().serviceName
+}
+
 export function pipelineName(): string {
   return selectedProfile().pipelineName()
 }
