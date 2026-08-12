@@ -97,6 +97,10 @@ class ApmClient {
     constructor(options = {}) {
         this.transactions = [];
         this.currentTransaction = null;
+        // Filters (kept for parity with upstream agent API; currently stored but not applied)
+        this.errorFilters = [];
+        this.transactionFilters = [];
+        this.spanFilters = [];
         const rawServerUrl = nonEmpty(options.serverUrl ?? process.env.ELASTIC_APM_SERVER_URL);
         let serverUrl;
         if (rawServerUrl) {
@@ -437,22 +441,107 @@ class ApmClient {
         const body = data !== undefined && data !== '' ? `: ${JSON.stringify(data)}` : ' (no response body)';
         console.log(`ci-apm-trace: APM server responded with status ${status}${body}`);
     }
+    destroy() {
+        this.transactions.length = 0;
+        this.currentTransaction = null;
+    }
+    setUserContext(context) {
+        if (!this.currentTransaction)
+            return false;
+        this.currentTransaction.user = { ...context };
+        return true;
+    }
+    setCustomContext(context) {
+        if (!this.currentTransaction)
+            return false;
+        this.currentTransaction.custom = { ...context };
+        return true;
+    }
+    setTransactionName(name) {
+        if (!this.currentTransaction)
+            return false;
+        this.currentTransaction.name = name;
+        return true;
+    }
+    setTransactionOutcome(outcome) {
+        if (!this.currentTransaction)
+            return false;
+        this.currentTransaction.result = outcome;
+        return true;
+    }
+    setSpanOutcome(outcome) {
+        if (!this.currentTransaction)
+            return false;
+        const last = this.currentTransaction.spans[this.currentTransaction.spans.length - 1];
+        if (!last)
+            return false;
+        last.outcome = outcome;
+        return true;
+    }
+    setLabel(key, value) {
+        if (!this.currentTransaction)
+            return false;
+        this.currentTransaction.labels[String(key)] = String(value);
+        return true;
+    }
+    addLabels(labels) {
+        if (!this.currentTransaction)
+            return false;
+        for (const [k, v] of Object.entries(labels)) {
+            this.currentTransaction.labels[k] = String(v);
+        }
+        return true;
+    }
+    setGlobalLabel(key, value) {
+        this.globalLabels[key] = value;
+    }
+    addErrorFilter(fn) {
+        if (typeof fn !== 'function')
+            return;
+        this.errorFilters.push(fn);
+    }
+    addTransactionFilter(fn) {
+        if (typeof fn !== 'function')
+            return;
+        this.transactionFilters.push(fn);
+    }
+    addSpanFilter(fn) {
+        if (typeof fn !== 'function')
+            return;
+        this.spanFilters.push(fn);
+    }
+    addFilter(fn) {
+        this.addErrorFilter(fn);
+        this.addTransactionFilter(fn);
+        this.addSpanFilter(fn);
+    }
+    getServiceName() {
+        return this.serviceName;
+    }
+    getServiceVersion() {
+        return this.serviceVersion;
+    }
+    getServiceEnvironment() {
+        return this.serviceEnvironment;
+    }
+    getServiceNodeName() {
+        return this.serviceNode;
+    }
     serialize(transactions) {
         const lines = [this.metadataLine()];
         for (const t of transactions) {
             for (const span of t.spans) {
-                lines.push(JSON.stringify({
-                    span: {
-                        id: span.id,
-                        trace_id: t.traceId,
-                        parent_id: t.id,
-                        name: span.name,
-                        type: span.type,
-                        timestamp: span.startMs * 1000,
-                        duration: roundMs(span.durationMs),
-                        outcome: 'success',
-                    },
-                }));
+                const spanObj = {
+                    id: span.id,
+                    trace_id: t.traceId,
+                    parent_id: t.id,
+                    name: span.name,
+                    type: span.type,
+                    timestamp: span.startMs * 1000,
+                    duration: roundMs(span.durationMs),
+                    outcome: span.outcome ?? 'success',
+                };
+                lines.push(JSON.stringify({ span: spanObj }));
             }
             for (const err of t.errors) {
                 lines.push(JSON.stringify({
@@ -470,32 +559,37 @@ class ApmClient {
                     },
                 }));
             }
-            lines.push(JSON.stringify({
-                transaction: {
-                    id: t.id,
-                    trace_id: t.traceId,
-                    name: t.name,
-                    type: t.type,
-                    result: t.result,
-                    outcome: t.result === 'failure'
-                        ? 'failure'
-                        : t.result === 'success'
-                            ? 'success'
-                            : 'unknown',
-                    timestamp: t.startMs * 1000,
-                    duration: roundMs(t.durationMs),
-                    sampled: true,
-                    span_count: { started: t.spans.length },
-                    ...(Object.keys(t.labels).length > 0 ? { context: { tags: t.labels } } : {}),
-                },
-            }));
+            const txContext = {};
+            if (Object.keys(t.labels).length > 0)
+                txContext.tags = t.labels;
+            if (t.user)
+                txContext.user = this.compact({ ...t.user });
+            if (t.custom && Object.keys(t.custom).length > 0)
+                txContext.custom = this.compact({ ...t.custom });
+            const transactionObj = {
+                id: t.id,
+                trace_id: t.traceId,
+                name: t.name,
+                type: t.type,
+                result: t.result,
+                outcome: t.result === 'failure' ? 'failure' : t.result === 'success' ? 'success' : 'unknown',
+                timestamp: t.startMs * 1000,
+                duration: roundMs(t.durationMs),
+                sampled: true,
+                span_count: { started: t.spans.length },
+            };
+            if (Object.keys(txContext).length > 0)
+                transactionObj.context = txContext;
+            lines.push(JSON.stringify({ transaction: transactionObj }));
         }
         return `${lines.join('\n')}\n`;
     }
 }
 let current = new ApmClient();
+let started = false;
 function initApm(options = {}) {
     current = new ApmClient(options);
+    started = true;
     return current;
 }
 exports.apm = {
@@ -508,5 +602,29 @@ exports.apm = {
     sendError: (event) => current.sendError(event),
     sendMetric: (event) => current.sendMetric(event),
     sendLog: (event) => current.sendLog(event),
+    // parity helpers
+    start: (options) => initApm(options),
+    destroy: () => {
+        if (current.destroy)
+            current.destroy();
+        started = false;
+    },
+    isStarted: () => started,
+    setUserContext: (ctx) => current.setUserContext ? current.setUserContext(ctx) : false,
+    setCustomContext: (ctx) => current.setCustomContext ? current.setCustomContext(ctx) : false,
+    setLabel: (k, v) => current.setLabel ? current.setLabel(k, v) : false,
+    addLabels: (labels) => current.addLabels ? current.addLabels(labels) : false,
+    setTransactionName: (name) => current.setTransactionName ? current.setTransactionName(name) : false,
+    setTransactionOutcome: (o) => current.setTransactionOutcome ? current.setTransactionOutcome(o) : false,
+    setSpanOutcome: (o) => current.setSpanOutcome ? current.setSpanOutcome(o) : false,
+    setGlobalLabel: (k, v) => current.setGlobalLabel ? current.setGlobalLabel(k, v) : undefined,
+    addErrorFilter: (fn) => current.addErrorFilter ? current.addErrorFilter(fn) : undefined,
+    addTransactionFilter: (fn) => current.addTransactionFilter ? current.addTransactionFilter(fn) : undefined,
+    addSpanFilter: (fn) => current.addSpanFilter ? current.addSpanFilter(fn) : undefined,
+    addFilter: (fn) => current.addFilter ? current.addFilter(fn) : undefined,
+    getServiceName: () => current.getServiceName ? current.getServiceName() : undefined,
+    getServiceVersion: () => current.getServiceVersion ? current.getServiceVersion() : undefined,
+    getServiceEnvironment: () => current.getServiceEnvironment ? current.getServiceEnvironment() : undefined,
+    getServiceNodeName: () => current.getServiceNodeName ? current.getServiceNodeName() : undefined,
 };
 //# sourceMappingURL=apm.js.map

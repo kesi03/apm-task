@@ -114,6 +114,25 @@ export interface ApmAgent {
     sendError(event: ErrorEventOptions): Promise<void>;
     sendMetric(event: MetricEventOptions): Promise<void>;
     sendLog(event: LogEventOptions): Promise<void>;
+    start?(options?: ApmInitOptions): ApmAgent;
+    destroy?(): void;
+    isStarted?(): boolean;
+    setUserContext?(context: UserContext): boolean;
+    setCustomContext?(context: Record<string, unknown>): boolean;
+    setLabel?(key: string, value: string | number | boolean): boolean;
+    addLabels?(labels: Record<string, string | number | boolean>): boolean;
+    setTransactionName?(name: string): boolean;
+    setTransactionOutcome?(outcome: EventOutcome): boolean;
+    setSpanOutcome?(outcome: EventOutcome): boolean;
+    setGlobalLabel?(key: string, value: string | number | boolean): void;
+    addErrorFilter?(fn: (obj: unknown) => unknown): void;
+    addTransactionFilter?(fn: (obj: unknown) => unknown): void;
+    addSpanFilter?(fn: (obj: unknown) => unknown): void;
+    addFilter?(fn: (obj: unknown) => unknown): void;
+    getServiceName?(): string | undefined;
+    getServiceVersion?(): string | undefined;
+    getServiceEnvironment?(): string | undefined;
+    getServiceNodeName?(): string | undefined;
 }
 export declare function initApm(options?: ApmInitOptions): ApmAgent;
 export declare const apm: ApmAgent;
