@@ -120,6 +120,26 @@ export interface ApmAgent {
   sendError(event: ErrorEventOptions): Promise<void>
   sendMetric(event: MetricEventOptions): Promise<void>
   sendLog(event: LogEventOptions): Promise<void>
+  // optional convenience methods (partial parity with upstream agent)
+  start?(options?: ApmInitOptions): ApmAgent
+  destroy?(): void
+  isStarted?(): boolean
+  setUserContext?(context: UserContext): boolean
+  setCustomContext?(context: Record<string, unknown>): boolean
+  setLabel?(key: string, value: string | number | boolean): boolean
+  addLabels?(labels: Record<string, string | number | boolean>): boolean
+  setTransactionName?(name: string): boolean
+  setTransactionOutcome?(outcome: EventOutcome): boolean
+  setSpanOutcome?(outcome: EventOutcome): boolean
+  setGlobalLabel?(key: string, value: string | number | boolean): void
+  addErrorFilter?(fn: (obj: unknown) => unknown): void
+  addTransactionFilter?(fn: (obj: unknown) => unknown): void
+  addSpanFilter?(fn: (obj: unknown) => unknown): void
+  addFilter?(fn: (obj: unknown) => unknown): void
+  getServiceName?(): string | undefined
+  getServiceVersion?(): string | undefined
+  getServiceEnvironment?(): string | undefined
+  getServiceNodeName?(): string | undefined
 }
 
 interface PendingSpan {
@@ -128,6 +148,7 @@ interface PendingSpan {
   type: string
   startMs: number
   durationMs: number
+  outcome?: EventOutcome
 }
 
 interface PendingError {
@@ -157,6 +178,8 @@ interface PendingTransaction {
   spans: PendingSpan[]
   errors: PendingError[]
   ended: boolean
+  user?: UserContext
+  custom?: Record<string, unknown>
 }
 
 function randomId(): string {
@@ -583,24 +606,118 @@ class ApmClient implements ApmAgent {
     console.log(`ci-apm-trace: APM server responded with status ${status}${body}`)
   }
 
+  // Filters (kept for parity with upstream agent API; currently stored but not applied)
+  private errorFilters: Array<(...args: unknown[]) => unknown> = []
+  private transactionFilters: Array<(...args: unknown[]) => unknown> = []
+  private spanFilters: Array<(...args: unknown[]) => unknown> = []
+
+  destroy(): void {
+    this.transactions.length = 0
+    this.currentTransaction = null
+  }
+
+  setUserContext(context: UserContext): boolean {
+    if (!this.currentTransaction) return false
+    this.currentTransaction.user = { ...context }
+    return true
+  }
+
+  setCustomContext(context: Record<string, unknown>): boolean {
+    if (!this.currentTransaction) return false
+    this.currentTransaction.custom = { ...context }
+    return true
+  }
+
+  setTransactionName(name: string): boolean {
+    if (!this.currentTransaction) return false
+    this.currentTransaction.name = name
+    return true
+  }
+
+  setTransactionOutcome(outcome: EventOutcome): boolean {
+    if (!this.currentTransaction) return false
+    this.currentTransaction.result = outcome
+    return true
+  }
+
+  setSpanOutcome(outcome: EventOutcome): boolean {
+    if (!this.currentTransaction) return false
+    const last = this.currentTransaction.spans[this.currentTransaction.spans.length - 1]
+    if (!last) return false
+    last.outcome = outcome
+    return true
+  }
+
+  setLabel(key: string, value: string | number | boolean): boolean {
+    if (!this.currentTransaction) return false
+    this.currentTransaction.labels[String(key)] = String(value)
+    return true
+  }
+
+  addLabels(labels: Record<string, string | number | boolean>): boolean {
+    if (!this.currentTransaction) return false
+    for (const [k, v] of Object.entries(labels)) {
+      this.currentTransaction.labels[k] = String(v)
+    }
+    return true
+  }
+
+  setGlobalLabel(key: string, value: string | number | boolean): void {
+    this.globalLabels[key] = value
+  }
+
+  addErrorFilter(fn: (obj: unknown) => unknown): void {
+    if (typeof fn !== 'function') return
+    this.errorFilters.push(fn)
+  }
+
+  addTransactionFilter(fn: (obj: unknown) => unknown): void {
+    if (typeof fn !== 'function') return
+    this.transactionFilters.push(fn)
+  }
+
+  addSpanFilter(fn: (obj: unknown) => unknown): void {
+    if (typeof fn !== 'function') return
+    this.spanFilters.push(fn)
+  }
+
+  addFilter(fn: (obj: unknown) => unknown): void {
+    this.addErrorFilter(fn)
+    this.addTransactionFilter(fn)
+    this.addSpanFilter(fn)
+  }
+
+  getServiceName(): string | undefined {
+    return this.serviceName
+  }
+
+  getServiceVersion(): string | undefined {
+    return this.serviceVersion
+  }
+
+  getServiceEnvironment(): string | undefined {
+    return this.serviceEnvironment
+  }
+
+  getServiceNodeName(): string | undefined {
+    return this.serviceNode
+  }
+
   private serialize(transactions: PendingTransaction[]): string {
     const lines: string[] = [this.metadataLine()]
     for (const t of transactions) {
       for (const span of t.spans) {
-        lines.push(
-          JSON.stringify({
-            span: {
-              id: span.id,
-              trace_id: t.traceId,
-              parent_id: t.id,
-              name: span.name,
-              type: span.type,
-              timestamp: span.startMs * 1000,
-              duration: roundMs(span.durationMs),
-              outcome: 'success',
-            },
-          })
-        )
+        const spanObj: Record<string, unknown> = {
+          id: span.id,
+          trace_id: t.traceId,
+          parent_id: t.id,
+          name: span.name,
+          type: span.type,
+          timestamp: span.startMs * 1000,
+          duration: roundMs(span.durationMs),
+          outcome: span.outcome ?? 'success',
+        }
+        lines.push(JSON.stringify({ span: spanObj }))
       }
       for (const err of t.errors) {
         lines.push(
@@ -620,37 +737,36 @@ class ApmClient implements ApmAgent {
           })
         )
       }
-      lines.push(
-        JSON.stringify({
-          transaction: {
-            id: t.id,
-            trace_id: t.traceId,
-            name: t.name,
-            type: t.type,
-            result: t.result,
-            outcome:
-              t.result === 'failure'
-                ? 'failure'
-                : t.result === 'success'
-                  ? 'success'
-                  : 'unknown',
-            timestamp: t.startMs * 1000,
-            duration: roundMs(t.durationMs),
-            sampled: true,
-            span_count: { started: t.spans.length },
-            ...(Object.keys(t.labels).length > 0 ? { context: { tags: t.labels } } : {}),
-          },
-        })
-      )
+      const txContext: Record<string, unknown> = {}
+      if (Object.keys(t.labels).length > 0) txContext.tags = t.labels
+      if (t.user) txContext.user = this.compact({ ...t.user })
+      if (t.custom && Object.keys(t.custom).length > 0) txContext.custom = this.compact({ ...t.custom })
+
+      const transactionObj: Record<string, unknown> = {
+        id: t.id,
+        trace_id: t.traceId,
+        name: t.name,
+        type: t.type,
+        result: t.result,
+        outcome: t.result === 'failure' ? 'failure' : t.result === 'success' ? 'success' : 'unknown',
+        timestamp: t.startMs * 1000,
+        duration: roundMs(t.durationMs),
+        sampled: true,
+        span_count: { started: t.spans.length },
+      }
+      if (Object.keys(txContext).length > 0) transactionObj.context = txContext
+      lines.push(JSON.stringify({ transaction: transactionObj }))
     }
     return `${lines.join('\n')}\n`
   }
 }
 
 let current: ApmAgent = new ApmClient()
+let started = false
 
 export function initApm(options: ApmInitOptions = {}): ApmAgent {
   current = new ApmClient(options)
+  started = true
   return current
 }
 
@@ -664,4 +780,27 @@ export const apm: ApmAgent = {
   sendError: (event) => current.sendError(event),
   sendMetric: (event) => current.sendMetric(event),
   sendLog: (event) => current.sendLog(event),
+  // parity helpers
+  start: (options?: ApmInitOptions) => initApm(options),
+  destroy: () => {
+    if ((current as any).destroy) (current as any).destroy()
+    started = false
+  },
+  isStarted: () => started,
+  setUserContext: (ctx: UserContext) => (current as any).setUserContext ? (current as any).setUserContext(ctx) : false,
+  setCustomContext: (ctx: Record<string, unknown>) => (current as any).setCustomContext ? (current as any).setCustomContext(ctx) : false,
+  setLabel: (k: string, v: string | number | boolean) => (current as any).setLabel ? (current as any).setLabel(k, v) : false,
+  addLabels: (labels: Record<string, string | number | boolean>) => (current as any).addLabels ? (current as any).addLabels(labels) : false,
+  setTransactionName: (name: string) => (current as any).setTransactionName ? (current as any).setTransactionName(name) : false,
+  setTransactionOutcome: (o: EventOutcome) => (current as any).setTransactionOutcome ? (current as any).setTransactionOutcome(o) : false,
+  setSpanOutcome: (o: EventOutcome) => (current as any).setSpanOutcome ? (current as any).setSpanOutcome(o) : false,
+  setGlobalLabel: (k: string, v: string | number | boolean) => (current as any).setGlobalLabel ? (current as any).setGlobalLabel(k, v) : undefined,
+  addErrorFilter: (fn: (obj: unknown) => unknown) => (current as any).addErrorFilter ? (current as any).addErrorFilter(fn) : undefined,
+  addTransactionFilter: (fn: (obj: unknown) => unknown) => (current as any).addTransactionFilter ? (current as any).addTransactionFilter(fn) : undefined,
+  addSpanFilter: (fn: (obj: unknown) => unknown) => (current as any).addSpanFilter ? (current as any).addSpanFilter(fn) : undefined,
+  addFilter: (fn: (obj: unknown) => unknown) => (current as any).addFilter ? (current as any).addFilter(fn) : undefined,
+  getServiceName: () => (current as any).getServiceName ? (current as any).getServiceName() : undefined,
+  getServiceVersion: () => (current as any).getServiceVersion ? (current as any).getServiceVersion() : undefined,
+  getServiceEnvironment: () => (current as any).getServiceEnvironment ? (current as any).getServiceEnvironment() : undefined,
+  getServiceNodeName: () => (current as any).getServiceNodeName ? (current as any).getServiceNodeName() : undefined,
 }
