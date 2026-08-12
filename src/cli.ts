@@ -20,6 +20,7 @@ interface CliArgs {
   'ci-provider'?: string
   'ci_platform'?: string
   'env-file'?: string
+  'use-span-store'?: boolean
   fail: boolean
   debug: boolean
   _: string[]
@@ -28,6 +29,7 @@ interface CliArgs {
 interface SubCommandArgs {
   'trace-name': string
   'ci_platform'?: string
+  'use-span-store'?: boolean
   fail: boolean
   debug: boolean
 }
@@ -133,12 +135,17 @@ async function main(): Promise<void> {
             default: false,
             description: 'Show the APM server response in the output',
           },
+          'use-span-store': {
+            type: 'boolean',
+            default: false,
+            description: 'Store spans in memory/file and send all at post (alternative mode)',
+          },
         }),
       async (argv) => {
         const args = argv as unknown as SubCommandArgs
         applyCiPlatform(args['ci_platform'])
         try {
-          await runPre({ traceName: args['trace-name'], debug: args.debug })
+          await runPre({ traceName: args['trace-name'], debug: args.debug, useSpanStore: args['use-span-store'] ?? false })
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
           console.error(`ci-apm-trace pre failed: ${message}`)
@@ -161,12 +168,17 @@ async function main(): Promise<void> {
             default: false,
             description: 'Show the APM server response in the output',
           },
+          'use-span-store': {
+            type: 'boolean',
+            default: false,
+            description: 'Store spans in memory/file and send all at post (alternative mode)',
+          },
         }),
       async (argv) => {
         const args = argv as unknown as SubCommandArgs
         applyCiPlatform(args['ci_platform'])
         try {
-          await runMain({ traceName: args['trace-name'], debug: args.debug })
+          await runMain({ traceName: args['trace-name'], debug: args.debug, useSpanStore: args['use-span-store'] ?? false })
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
           console.error(`ci-apm-trace main failed: ${message}`)
@@ -194,12 +206,17 @@ async function main(): Promise<void> {
             default: false,
             description: 'Show the APM server response in the output',
           },
+          'use-span-store': {
+            type: 'boolean',
+            default: false,
+            description: 'Store spans in memory/file and send all at post (alternative mode)',
+          },
         }),
       async (argv) => {
         const args = argv as unknown as SubCommandArgs
         applyCiPlatform(args['ci_platform'])
         try {
-          await runPost({ traceName: args['trace-name'], fail: args.fail, debug: args.debug })
+          await runPost({ traceName: args['trace-name'], fail: args.fail, debug: args.debug, useSpanStore: args['use-span-store'] ?? false })
           process.exitCode = args.fail ? 1 : 0
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
@@ -246,6 +263,11 @@ async function main(): Promise<void> {
       'env-file': {
         type: 'string',
         description: 'Path to an .env file to load (default: .env in the current directory)',
+      },
+      'use-span-store': {
+        type: 'boolean',
+        default: false,
+        description: 'Store spans in memory/file and send all at post (alternative mode)',
       },
       fail: {
         type: 'boolean',

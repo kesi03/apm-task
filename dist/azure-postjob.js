@@ -38,10 +38,13 @@ const apm_1 = require("./apm");
 const ecs_metrics_1 = require("./ecs-metrics");
 const runtime_metrics_1 = require("./runtime-metrics");
 const azure_common_1 = require("./azure-common");
+const span_store_1 = require("./span-store");
+const cli_span_store_1 = require("./cli-span-store");
 async function run() {
     (0, azure_common_1.initAzureApm)();
     const traceName = tl.getInput('traceName', false) || 'azure-devops';
     const fail = tl.getBoolInput('fail', false);
+    const useSpanStore = (tl.getInput('useSpanStore', false) || 'false').toLowerCase() === 'true';
     const jobStatus = tl.getVariable('Agent.JobStatus') || 'Succeeded';
     const failed = fail || jobStatus === 'Failed' || jobStatus === 'Canceled';
     const traceId = tl.getVariable('APM_TRACE_ID') || (0, azure_common_1.randomHex)(16);
@@ -53,81 +56,163 @@ async function run() {
     const tags = (0, azure_common_1.pipelineTags)();
     const buildNumber = tl.getVariable('Build.BuildNumber');
     const transactionName = buildNumber ? `${traceName}-${buildNumber}` : traceName;
-    await apm_1.apm.sendSpan({
-        traceId,
-        spanId,
-        parentId: transactionId,
-        name: 'Job End',
-        type: 'job',
-        subtype: 'azure-pipelines',
-        action: 'end',
-        startMs,
-        durationMs,
-        outcome: failed ? 'failure' : 'success',
-        tags,
-    });
-    await apm_1.apm.sendTransaction({
-        id: transactionId,
-        traceId,
-        name: transactionName,
-        type: 'pipeline',
-        startMs,
-        durationMs,
-        result: failed ? 'failure' : 'success',
-        outcome: failed ? 'failure' : 'success',
-        spanCount: 3,
-        user: (0, azure_common_1.pipelineUser)(),
-        custom: (0, azure_common_1.pipelineCustom)(),
-        session: { id: traceId },
-        tags,
-    });
-    await apm_1.apm.sendLog({
-        message: failed ? `${(0, azure_common_1.pipelineName)()} pipeline has failed: ${jobStatus}` : `${(0, azure_common_1.pipelineName)()} pipeline has ended`,
-        level: failed ? 'error' : 'info',
-        logger: 'ci-apm-trace',
-        dataset: 'azure-pipelines',
-        traceId,
-        transactionId,
-    });
-    if (failed) {
-        await apm_1.apm.sendError({
-            traceId,
-            transactionId,
-            parentId: transactionId,
-            message: `Pipeline failed: ${jobStatus}`,
-            type: 'pipeline-failure',
-            transaction: { name: transactionName, type: 'pipeline', sampled: true },
-            user: (0, azure_common_1.pipelineUser)(),
-            custom: (0, azure_common_1.pipelineCustom)(),
-            tags,
-        });
-    }
-    await apm_1.apm.sendMetric({
-        timestampMs: Date.now(),
-        samples: {
-            'ci.job.duration.ms': { value: durationMs, unit: 'ms' },
-            'ci.job.success': { value: failed ? 0 : 1, unit: 'bool' },
-        },
-        transaction: { name: transactionName, type: 'pipeline' },
-        tags,
-    });
-    await (0, ecs_metrics_1.sendEcsMetrics)(apm_1.apm, {
-        serviceName: 'azure-devops',
-        serviceVersion: buildNumber,
-        transaction: { name: transactionName, type: 'pipeline' },
-        tags,
-    });
-    await (0, runtime_metrics_1.sendRuntimeMetrics)(apm_1.apm, {
-        serviceName: 'azure-devops',
-        serviceVersion: buildNumber,
-        transaction: { name: transactionName, type: 'pipeline' },
-        tags,
-    });
-    if (failed) {
-        tl.setResult(tl.TaskResult.SucceededWithIssues, 'Elastic APM: pipeline failure recorded');
+    const storeEnabled = useSpanStore || tl.getVariable('APM_USE_SPAN_STORE') === 'true';
+    if (storeEnabled) {
+        // Alternative mode: send all accumulated spans from store
+        const store = new span_store_1.SpanStore(traceId, transactionId);
+        const manager = new cli_span_store_1.CliSpanStoreManager(store);
+        try {
+            // Add the final job-end span to the store before sending everything
+            if (store.exists()) {
+                store.addSpan({
+                    traceId,
+                    spanId,
+                    parentId: transactionId,
+                    name: 'Job End',
+                    type: 'job',
+                    subtype: 'azure-pipelines',
+                    action: 'end',
+                    startMs,
+                    durationMs,
+                    outcome: failed ? 'failure' : 'success',
+                    tags,
+                });
+                if (failed) {
+                    store.addError({
+                        traceId,
+                        transactionId,
+                        parentId: transactionId,
+                        message: `Pipeline failed: ${jobStatus}`,
+                        type: 'pipeline-failure',
+                        transaction: { name: transactionName, type: 'pipeline', sampled: true },
+                        custom: (0, azure_common_1.pipelineCustom)(),
+                        tags,
+                    });
+                }
+            }
+            console.log(`[APM-STORE] Sending ${store.getData().spans.length} spans and transaction from store`);
+            await manager.sendAllData(failed, jobStatus, transactionName, (0, azure_common_1.pipelineUser)(), (0, azure_common_1.pipelineCustom)(), tags);
+            console.log('[APM-STORE] Successfully sent all stored data');
+            // Send metrics after transaction
+            try {
+                await apm_1.apm.sendMetric({
+                    timestampMs: Date.now(),
+                    samples: {
+                        'ci.job.duration.ms': { value: durationMs, unit: 'ms' },
+                        'ci.job.success': { value: failed ? 0 : 1, unit: 'bool' },
+                    },
+                    transaction: { name: transactionName, type: 'pipeline' },
+                    tags,
+                });
+                await (0, ecs_metrics_1.sendEcsMetrics)(apm_1.apm, {
+                    serviceName: 'azure-devops',
+                    serviceVersion: buildNumber,
+                    transaction: { name: transactionName, type: 'pipeline' },
+                    tags,
+                });
+                await (0, runtime_metrics_1.sendRuntimeMetrics)(apm_1.apm, {
+                    serviceName: 'azure-devops',
+                    serviceVersion: buildNumber,
+                    transaction: { name: transactionName, type: 'pipeline' },
+                    tags,
+                });
+            }
+            catch (metricsError) {
+                const message = metricsError instanceof Error ? metricsError.message : String(metricsError);
+                console.warn(`[APM-STORE] Failed to send metrics: ${message}`);
+                // Don't fail on metrics errors
+            }
+            if (failed) {
+                tl.setResult(tl.TaskResult.SucceededWithIssues, 'Elastic APM: pipeline failure recorded');
+            }
+            else {
+                tl.setResult(tl.TaskResult.Succeeded, 'Elastic APM: trace sent');
+            }
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.error(`[APM-STORE] Failed to send stored data: ${message}`);
+            tl.setResult(tl.TaskResult.SucceededWithIssues, `Elastic APM trace failed: ${message}`);
+        }
     }
     else {
-        tl.setResult(tl.TaskResult.Succeeded, 'Elastic APM: trace sent');
+        // Original mode: send spans immediately
+        await apm_1.apm.sendSpan({
+            traceId,
+            spanId,
+            parentId: transactionId,
+            name: 'Job End',
+            type: 'job',
+            subtype: 'azure-pipelines',
+            action: 'end',
+            startMs,
+            durationMs,
+            outcome: failed ? 'failure' : 'success',
+            tags,
+        });
+        await apm_1.apm.sendTransaction({
+            id: transactionId,
+            traceId,
+            name: transactionName,
+            type: 'pipeline',
+            startMs,
+            durationMs,
+            result: failed ? 'failure' : 'success',
+            outcome: failed ? 'failure' : 'success',
+            spanCount: 3,
+            user: (0, azure_common_1.pipelineUser)(),
+            custom: (0, azure_common_1.pipelineCustom)(),
+            session: { id: traceId },
+            tags,
+        });
+        await apm_1.apm.sendLog({
+            message: failed ? `${(0, azure_common_1.pipelineName)()} pipeline has failed: ${jobStatus}` : `${(0, azure_common_1.pipelineName)()} pipeline has ended`,
+            level: failed ? 'error' : 'info',
+            logger: 'ci-apm-trace',
+            dataset: 'azure-pipelines',
+            traceId,
+            transactionId,
+        });
+        if (failed) {
+            await apm_1.apm.sendError({
+                traceId,
+                transactionId,
+                parentId: transactionId,
+                message: `Pipeline failed: ${jobStatus}`,
+                type: 'pipeline-failure',
+                transaction: { name: transactionName, type: 'pipeline', sampled: true },
+                user: (0, azure_common_1.pipelineUser)(),
+                custom: (0, azure_common_1.pipelineCustom)(),
+                tags,
+            });
+        }
+        await apm_1.apm.sendMetric({
+            timestampMs: Date.now(),
+            samples: {
+                'ci.job.duration.ms': { value: durationMs, unit: 'ms' },
+                'ci.job.success': { value: failed ? 0 : 1, unit: 'bool' },
+            },
+            transaction: { name: transactionName, type: 'pipeline' },
+            tags,
+        });
+        await (0, ecs_metrics_1.sendEcsMetrics)(apm_1.apm, {
+            serviceName: 'azure-devops',
+            serviceVersion: buildNumber,
+            transaction: { name: transactionName, type: 'pipeline' },
+            tags,
+        });
+        await (0, runtime_metrics_1.sendRuntimeMetrics)(apm_1.apm, {
+            serviceName: 'azure-devops',
+            serviceVersion: buildNumber,
+            transaction: { name: transactionName, type: 'pipeline' },
+            tags,
+        });
+        if (failed) {
+            tl.setResult(tl.TaskResult.SucceededWithIssues, 'Elastic APM: pipeline failure recorded');
+        }
+        else {
+            tl.setResult(tl.TaskResult.Succeeded, 'Elastic APM: trace sent');
+        }
     }
 }
 run().catch((error) => {

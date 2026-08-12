@@ -36,8 +36,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const tl = __importStar(require("azure-pipelines-task-lib"));
 const apm_1 = require("./apm");
 const azure_common_1 = require("./azure-common");
+const span_store_1 = require("./span-store");
 async function run() {
     (0, azure_common_1.initAzureApm)();
+    const useSpanStore = (tl.getInput('useSpanStore', false) || 'false').toLowerCase() === 'true';
     const traceId = tl.getVariable('APM_TRACE_ID') || (0, azure_common_1.randomHex)(16);
     const transactionId = (0, azure_common_1.randomHex)(8);
     const spanId = (0, azure_common_1.randomHex)(8);
@@ -46,24 +48,45 @@ async function run() {
     tl.setVariable('APM_TRANSACTION_ID', transactionId);
     tl.setVariable('APM_SPAN_ID', spanId);
     tl.setVariable('APM_JOB_START_MS', String(startMs));
-    await apm_1.apm.sendSpan({
-        traceId,
-        spanId,
-        parentId: transactionId,
-        name: 'Job Start',
-        type: 'job',
-        subtype: 'azure-pipelines',
-        action: 'start',
-        startMs,
-        tags: (0, azure_common_1.pipelineTags)(),
-    });
-    await apm_1.apm.sendLog({
-        message: `${(0, azure_common_1.pipelineName)()} pipeline has started`,
-        level: 'info',
-        logger: 'ci-apm-trace',
-        traceId,
-        transactionId,
-    });
+    tl.setVariable('APM_USE_SPAN_STORE', useSpanStore ? 'true' : 'false');
+    if (useSpanStore) {
+        // Alternative mode: store span data instead of sending immediately
+        const store = new span_store_1.SpanStore(traceId, transactionId);
+        store.initialize('azure-devops', startMs);
+        store.addSpan({
+            traceId,
+            spanId,
+            parentId: transactionId,
+            name: 'Job Start',
+            type: 'job',
+            subtype: 'azure-pipelines',
+            action: 'start',
+            startMs,
+            tags: (0, azure_common_1.pipelineTags)(),
+        });
+        console.log(`[APM-STORE] Initialized span store for ${traceId}`);
+    }
+    else {
+        // Original mode: send immediately
+        await apm_1.apm.sendSpan({
+            traceId,
+            spanId,
+            parentId: transactionId,
+            name: 'Job Start',
+            type: 'job',
+            subtype: 'azure-pipelines',
+            action: 'start',
+            startMs,
+            tags: (0, azure_common_1.pipelineTags)(),
+        });
+        await apm_1.apm.sendLog({
+            message: `${(0, azure_common_1.pipelineName)()} pipeline has started`,
+            level: 'info',
+            logger: 'ci-apm-trace',
+            traceId,
+            transactionId,
+        });
+    }
     console.log('Elastic APM: job span started');
 }
 run().catch((error) => {

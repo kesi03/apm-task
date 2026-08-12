@@ -11,11 +11,14 @@ import {
   randomHex,
   serviceName,
 } from './cli-common'
+import { SpanStore } from './span-store'
+import { CliSpanStoreManager } from './cli-span-store'
 
 export interface CliPostOptions {
   traceName: string
   fail: boolean
   debug: boolean
+  useSpanStore?: boolean
 }
 
 export async function runPost(options: CliPostOptions): Promise<void> {
@@ -33,81 +36,170 @@ export async function runPost(options: CliPostOptions): Promise<void> {
   const tags = pipelineTags()
   const buildNumber = process.env.BUILD_NUMBER
   const transactionName = buildNumber ? `${options.traceName}-${buildNumber}` : options.traceName
+  
+  const useSpanStore = process.env.APM_USE_SPAN_STORE === 'true' || options.useSpanStore
 
-  await apm.sendSpan({
-    traceId,
-    spanId,
-    parentId: transactionId,
-    name: 'Job End',
-    type: 'job',
-    subtype: providerName(),
-    action: 'end',
-    startMs,
-    durationMs,
-    outcome: failed ? 'failure' : 'success',
-    tags,
-  })
+  if (useSpanStore) {
+    // Alternative mode: send all accumulated spans from store
+    const store = new SpanStore(traceId, transactionId)
+    const manager = new CliSpanStoreManager(store)
 
-  await apm.sendTransaction({
-    id: transactionId,
-    traceId,
-    name: transactionName,
-    type: 'pipeline',
-    startMs,
-    durationMs,
-    result: failed ? 'failure' : 'success',
-    outcome: failed ? 'failure' : 'success',
-    spanCount: 3,
-    user: pipelineUser(),
-    custom: pipelineCustom(),
-    session: { id: traceId },
-    tags,
-  })
+    try {
+      // Add the final job-end span to the store before sending everything
+      if (store.exists()) {
+        store.addSpan({
+          traceId,
+          spanId,
+          parentId: transactionId,
+          name: 'Job End',
+          type: 'job',
+          subtype: providerName(),
+          action: 'end',
+          startMs,
+          durationMs,
+          outcome: failed ? 'failure' : 'success',
+          tags,
+        })
 
-  await apm.sendLog({
-    message: failed ? `${pipelineName()} pipeline has failed: ${jobStatus}` : `${pipelineName()} pipeline has ended`,
-    level: failed ? 'error' : 'info',
-    logger: 'ci-apm-trace',
-    dataset: 'ci',
-    traceId,
-    transactionId,
-  })
+        if (failed) {
+          store.addError({
+            traceId,
+            transactionId,
+            parentId: transactionId,
+            message: `Pipeline failed: ${jobStatus}`,
+            type: 'pipeline-failure',
+            transaction: { name: transactionName, type: 'pipeline', sampled: true },
+            custom: pipelineCustom(),
+            tags,
+          })
+        }
+      }
 
-  if (failed) {
-    await apm.sendError({
+      console.log(`[APM-STORE] Sending ${store.getData().spans.length} spans and transaction from store`)
+
+      await manager.sendAllData(
+        failed,
+        jobStatus,
+        transactionName,
+        pipelineUser(),
+        pipelineCustom(),
+        tags
+      )
+
+      console.log('[APM-STORE] Successfully sent all stored data')
+
+      // Send metrics after transaction
+      try {
+        await apm.sendMetric({
+          timestampMs: Date.now(),
+          samples: {
+            'ci.job.duration.ms': { value: durationMs, unit: 'ms' },
+            'ci.job.success': { value: failed ? 0 : 1, unit: 'bool' },
+          },
+          transaction: { name: transactionName, type: 'pipeline' },
+          tags,
+        })
+
+        await sendEcsMetrics(apm, {
+          serviceName: serviceName(),
+          serviceVersion: buildNumber,
+          transaction: { name: transactionName, type: 'pipeline' },
+          tags,
+        })
+
+        await sendRuntimeMetrics(apm, {
+          serviceName: serviceName(),
+          serviceVersion: buildNumber,
+          transaction: { name: transactionName, type: 'pipeline' },
+          tags,
+        })
+      } catch (metricsError) {
+        const message = metricsError instanceof Error ? metricsError.message : String(metricsError)
+        console.warn(`[APM-STORE] Failed to send metrics: ${message}`)
+        // Don't fail on metrics errors
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error(`[APM-STORE] Failed to send stored data: ${message}`)
+      throw error
+    }
+  } else {
+    // Original mode: send spans immediately
+    await apm.sendSpan({
       traceId,
-      transactionId,
+      spanId,
       parentId: transactionId,
-      message: `Pipeline failed: ${jobStatus}`,
-      type: 'pipeline-failure',
-      transaction: { name: transactionName, type: 'pipeline', sampled: true },
+      name: 'Job End',
+      type: 'job',
+      subtype: providerName(),
+      action: 'end',
+      startMs,
+      durationMs,
+      outcome: failed ? 'failure' : 'success',
+      tags,
+    })
+
+    await apm.sendTransaction({
+      id: transactionId,
+      traceId,
+      name: transactionName,
+      type: 'pipeline',
+      startMs,
+      durationMs,
+      result: failed ? 'failure' : 'success',
+      outcome: failed ? 'failure' : 'success',
+      spanCount: 3,
       user: pipelineUser(),
       custom: pipelineCustom(),
+      session: { id: traceId },
+      tags,
+    })
+
+    await apm.sendLog({
+      message: failed ? `${pipelineName()} pipeline has failed: ${jobStatus}` : `${pipelineName()} pipeline has ended`,
+      level: failed ? 'error' : 'info',
+      logger: 'ci-apm-trace',
+      dataset: 'ci',
+      traceId,
+      transactionId,
+    })
+
+    if (failed) {
+      await apm.sendError({
+        traceId,
+        transactionId,
+        parentId: transactionId,
+        message: `Pipeline failed: ${jobStatus}`,
+        type: 'pipeline-failure',
+        transaction: { name: transactionName, type: 'pipeline', sampled: true },
+        user: pipelineUser(),
+        custom: pipelineCustom(),
+        tags,
+      })
+    }
+
+    await apm.sendMetric({
+      timestampMs: Date.now(),
+      samples: {
+        'ci.job.duration.ms': { value: durationMs, unit: 'ms' },
+        'ci.job.success': { value: failed ? 0 : 1, unit: 'bool' },
+      },
+      transaction: { name: transactionName, type: 'pipeline' },
+      tags,
+    })
+
+    await sendEcsMetrics(apm, {
+      serviceName: serviceName(),
+      serviceVersion: buildNumber,
+      transaction: { name: transactionName, type: 'pipeline' },
+      tags,
+    })
+
+    await sendRuntimeMetrics(apm, {
+      serviceName: serviceName(),
+      serviceVersion: buildNumber,
+      transaction: { name: transactionName, type: 'pipeline' },
       tags,
     })
   }
-
-  await apm.sendMetric({
-    timestampMs: Date.now(),
-    samples: {
-      'ci.job.duration.ms': { value: durationMs, unit: 'ms' },
-      'ci.job.success': { value: failed ? 0 : 1, unit: 'bool' },
-    },
-    transaction: { name: transactionName, type: 'pipeline' },
-    tags,
-  })
-
-  await sendEcsMetrics(apm, {
-    serviceName: serviceName(),
-    serviceVersion: buildNumber,
-    transaction: { name: transactionName, type: 'pipeline' },
-    tags,
-  })
-
-  await sendRuntimeMetrics(apm, {
-    serviceName: serviceName(),
-    serviceVersion: buildNumber,
-    transaction: { name: transactionName, type: 'pipeline' },
-    tags,
-  })
 }

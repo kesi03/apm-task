@@ -15,13 +15,14 @@ function main() {
     const traceName = getInput('trace-name') || 'github-action';
     const fail = (getInput('fail') || 'false').toLowerCase() === 'true';
     const debug = (getInput('debug') || 'false').toLowerCase() === 'true';
+    const useSpanStore = (getInput('use-span-store') || 'false').toLowerCase() === 'true';
     const apmServer = getInput('apm-server');
     const apmToken = getInput('apm-token');
     const jobStatus = (getInput('__job-status') || 'success').toLowerCase();
     const env = { ...process.env };
     (0, github_env_1.applyGitHubEnv)(env);
     env.APM_CI_PLATFORM = 'github-action';
-    for (const name of ['APM_TRACE_ID', 'APM_TRANSACTION_ID', 'APM_SPAN_ID', 'APM_JOB_START_MS']) {
+    for (const name of ['APM_TRACE_ID', 'APM_TRANSACTION_ID', 'APM_SPAN_ID', 'APM_JOB_START_MS', 'APM_USE_SPAN_STORE']) {
         const value = getState(name);
         if (value) {
             env[name] = value;
@@ -38,6 +39,9 @@ function main() {
     const args = ['post', '--trace-name', traceName];
     if (debug) {
         args.push('--debug');
+    }
+    if (useSpanStore) {
+        args.push('--use-span-store');
     }
     const cli = (0, path_1.resolve)(__dirname, 'cli.js');
     const result = (0, child_process_1.spawnSync)(process.execPath, [cli, ...args], { stdio: 'inherit', env });

@@ -54,12 +54,16 @@ function main() {
     const traceName = getInput('trace-name') || 'github-action';
     const fail = (getInput('fail') || 'false').toLowerCase() === 'true';
     const debug = (getInput('debug') || 'false').toLowerCase() === 'true';
+    const useSpanStore = (getInput('use-span-store') || 'false').toLowerCase() === 'true';
     const apmServer = getInput('apm-server');
     const apmToken = getInput('apm-token');
     const env = buildEnv(apmServer, apmToken);
     const preArgs = ['pre', '--trace-name', traceName];
     if (debug) {
         preArgs.push('--debug');
+    }
+    if (useSpanStore) {
+        preArgs.push('--use-span-store');
     }
     const pre = runCli(preArgs, env, true);
     if (pre.status !== 0) {
@@ -74,6 +78,9 @@ function main() {
     const mainArgs = ['main', '--trace-name', traceName];
     if (debug) {
         mainArgs.push('--debug');
+    }
+    if (useSpanStore) {
+        mainArgs.push('--use-span-store');
     }
     const run = runCli(mainArgs, env);
     if (run.status !== 0) {
