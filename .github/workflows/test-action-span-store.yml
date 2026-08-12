@@ -1,0 +1,82 @@
+name: "Test GitHub Action (Span Store Mode)"
+
+on:
+  workflow_dispatch:
+    inputs:
+      trace-name:
+        description: 'Name of the trace to send (shown in APM)'
+        required: false
+        default: 'smoke-test-span-store'
+      fail:
+        description: 'End the trace as a failure (for testing)'
+        required: false
+        type: boolean
+        default: false
+      debug:
+        description: 'Print the APM server responses (status + body)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  test-action-span-store:
+    name: Run the action (Span Store Mode)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable debug if repo variable is true
+        if: ${{ vars.DEBUG_MODE == 'true' }}
+        run: echo "ACTIONS_STEP_DEBUG=true" >> $GITHUB_ENV
+
+      - name: Check APM secrets
+        env:
+          APM_SERVER: ${{ vars.ELASTIC_APM_SERVER_URL }}
+          APM_TOKEN: ${{ secrets.ELASTIC_APM_SECRET_TOKEN }}
+        run: |
+          if [ -z "$APM_SERVER" ]; then
+            echo "::error::The ELASTIC_APM_SERVER_URL variable is not set. Add it under Settings > Secrets and variables > Actions > Variables."
+            exit 1
+          fi
+          if [ -z "$APM_TOKEN" ]; then
+            echo "::warning::The ELASTIC_APM_SECRET_TOKEN secret is not set; the trace will be sent without authentication."
+          fi
+          if echo "$APM_SERVER" | grep -q '\.ingest\.'; then
+            echo "::error::ELASTIC_APM_SERVER_URL ($APM_SERVER) looks like the Elasticsearch/OTel ingest endpoint, not an APM Server URL. Use the APM endpoint (e.g. https://<deployment-id>.apm.<region>.gcp.elastic.cloud:443) from your Elastic deployment page."
+            exit 1
+          fi
+          if [ -n "$APM_TOKEN" ] && echo "$APM_TOKEN" | grep -q '='; then
+            echo "::warning::The token looks like an Elastic API key; it will be sent as 'Authorization: ApiKey <key>'."
+          fi
+          echo "APM server URL: $APM_SERVER"
+
+      - name: Prepare
+        run: echo "Preparing the pipeline run (before the action step)..."
+
+      - name: Send pipeline trace to APM (Span Store Mode)
+        uses: ./
+        with:
+          trace-name: ${{ inputs.trace-name }}
+          apm-server: ${{ vars.ELASTIC_APM_SERVER_URL }}
+          apm-token: ${{ secrets.ELASTIC_APM_SECRET_TOKEN }}
+          use-span-store: true
+          fail: ${{ inputs.fail }}
+          debug: ${{ inputs.debug }}
+
+      - name: Finalize
+        if: success()
+        run: |
+          echo "Pipeline steps finished. The action's post phase ends the trace as success."
+          echo "All spans were accumulated and sent together in post phase (Span Store Mode)."
+          echo "If you set fail=true, this step is skipped and the job fails, but the post phase still runs."
+
+      - name: Where to look
+        if: always()
+        run: |
+          echo "Open your Elastic APM app and search for the transaction name '${{
+            inputs.trace-name }}-${{ github.run_number }}' (service 'github-action')."
+          echo "View the run here: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "This run used Span Store Mode - spans were stored and sent together at post phase."
