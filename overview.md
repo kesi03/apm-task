@@ -14,7 +14,7 @@ The same client also runs on other platforms without the Azure extension:
 - **GitHub Action** — a native `uses:` step for GitHub Actions.
 - **go-task** — a `Taskfile` wraps the CLI for local runs and CI orchestration.
 
-See the repository README for details and the ready-made npm/task/docker client pipelines for Azure Pipelines.
+See the repository [README](https://github.com/kesi03/apm-task/blob/main/README.md) for details and the ready-made npm/task/docker client pipelines for Azure Pipelines.
 
 ## Set up
 
@@ -34,8 +34,6 @@ pool:
   vmImage: ubuntu-latest
 
 steps:
-  - script: npm ci && npm run build
-
   - task: CiApmTrace@1
     displayName: 'Send pipeline trace to APM'
     inputs:
